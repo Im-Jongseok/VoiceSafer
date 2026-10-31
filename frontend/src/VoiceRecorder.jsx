@@ -147,7 +147,7 @@ export default function VoiceRecorder({
             onError(
               error.message === "3초 이상 녹음해 주세요."
                 ? error.message
-                : "녹음을 처리하지 못했습니다. 다시 녹음하거나 음성 파일을 선택해 주세요.",
+                : "녹음을 처리하지 못했습니다. 다시 녹음해 주세요.",
             );
         } finally {
           reset(session);
