@@ -20,6 +20,9 @@ export default function SiteFooter() {
           <a href="/lookup" className="hover:text-slate-900">
             신청 조회
           </a>
+          <a href="/control" className="hover:text-slate-900">
+            login
+          </a>
         </nav>
       </div>
       <div className="mt-6 flex flex-wrap justify-between gap-2 border-t border-slate-100 pt-4 text-xs text-slate-400">

@@ -35,7 +35,11 @@ try {
     revoke all on app_private.schema_migrations from public, anon, authenticated;`);
   for (const name of (await readdir(new URL("migrations/", root)))
     .filter((name) => name.endsWith(".sql"))
-    .sort()) {
+    .sort((a, b) => {
+      // The two bootstrap migrations predate the CLI timestamp convention.
+      const legacy = (name) => (name.split("_")[0].length === 12 ? 0 : 1);
+      return legacy(a) - legacy(b) || a.localeCompare(b);
+    })) {
     const sql = await readFile(new URL(`migrations/${name}`, root), "utf8");
     const checksum = createHash("sha256").update(sql).digest("hex");
     const previous = await db.query(
