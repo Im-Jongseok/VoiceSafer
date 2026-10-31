@@ -266,9 +266,21 @@ def test_malformed_voice_response_is_rejected(api):
     assert result.status_code == 502
 
 
-def test_first_page_serves_ui(api):
+def test_first_page_serves_ui(api, tmp_path, monkeypatch):
     client, _, _ = api
+    (tmp_path / "index.html").write_text(
+        '<title>피싱 리허설</title><div id="root"></div>'
+    )
+    monkeypatch.setattr(main, "FRONTEND_DIST", tmp_path)
     page = client.get("/")
     assert page.status_code == 200
     assert "피싱 리허설" in page.text
-    assert 'id="player"' in page.text
+    assert 'id="root"' in page.text
+
+
+def test_missing_frontend_build_has_clear_instructions(api, tmp_path, monkeypatch):
+    client, _, _ = api
+    monkeypatch.setattr(main, "FRONTEND_DIST", tmp_path)
+    page = client.get("/")
+    assert page.status_code == 503
+    assert "npm run build" in page.json()["detail"]

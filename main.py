@@ -9,10 +9,12 @@ from urllib.parse import urlsplit
 import httpx
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, StringConstraints
 
 MAX_FILE = 20 * 1024 * 1024
 MAX_BODY = MAX_FILE + 64 * 1024
+FRONTEND_DIST = Path(__file__).parent / "frontend/dist"
 
 
 class UploadTooLarge(Exception):
@@ -128,7 +130,19 @@ async def provider_connection(request: Request, error: httpx.RequestError):
 
 @app.get("/", include_in_schema=False)
 async def index():
-    return FileResponse(Path(__file__).parent / "static/index.html")
+    page = FRONTEND_DIST / "index.html"
+    if not page.is_file():
+        raise HTTPException(
+            503, "frontend 폴더에서 npm ci와 npm run build를 실행해 주세요."
+        )
+    return FileResponse(page)
+
+
+app.mount(
+    "/assets",
+    StaticFiles(directory=FRONTEND_DIST / "assets", check_dir=False),
+    name="assets",
+)
 
 
 @app.get("/api/config")

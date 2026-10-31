@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR",
+    sans-serif;
+}
+
+@layer base {
+  body {
+    @apply m-0 bg-[#f8faf9] font-sans text-slate-800 antialiased;
+  }
+  button:not(:disabled),
+  a {
+    @apply cursor-pointer;
+  }
+  button:disabled {
+    @apply cursor-not-allowed;
+  }
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible {
+    @apply outline-2 outline-offset-4 outline-emerald-600;
+  }
+}
