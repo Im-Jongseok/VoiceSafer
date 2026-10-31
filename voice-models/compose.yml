@@ -1,0 +1,71 @@
+name: voice-models-local
+x-local: &local
+  restart: unless-stopped
+  init: true
+  devices:
+    - nvidia.com/gpu=all
+  shm_size: 2gb
+  volumes:
+    - model-cache:/cache
+  healthcheck:
+    test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8080/health/ready', timeout=5)"]
+    interval: 20s
+    timeout: 8s
+    start_period: 30m
+    retries: 3
+  environment: &local-env
+    LAB_API_KEY: ${LAB_API_KEY:?Run python scripts/configure.py first}
+    MAX_VOICES: ${MAX_VOICES:-16}
+    DATA_DIR: /data
+    HF_HOME: /cache/huggingface
+    OMP_NUM_THREADS: 4
+    TOKENIZERS_PARALLELISM: 'false'
+services:
+  elevenlabs:
+    build:
+      context: .
+      dockerfile: docker/eleven.Dockerfile
+    restart: unless-stopped
+    init: true
+    ports: ['127.0.0.1:18080:8080']
+    environment:
+      PROVIDER: elevenlabs
+      LAB_API_KEY: ${LAB_API_KEY:?Run python scripts/configure.py first}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      ELEVENLABS_VOICE_ID: ${ELEVENLABS_VOICE_ID:-}
+      ELEVENLABS_MODEL_ID: ${ELEVENLABS_MODEL_ID:-eleven_flash_v2_5}
+    volumes: ['eleven-data:/data']
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8080/health/live', timeout=5)"]
+      interval: 20s
+      timeout: 8s
+      retries: 3
+  cosyvoice:
+    <<: *local
+    build:
+      context: .
+      dockerfile: docker/cosy.Dockerfile
+    ports: ['127.0.0.1:18081:8080']
+    volumes: ['model-cache:/cache', 'cosy-data:/data']
+    environment:
+      <<: *local-env
+      PROVIDER: cosyvoice
+      MODEL_ID: ${COSY_MODEL_ID:-FunAudioLLM/Fun-CosyVoice3-0.5B-2512}
+      MODEL_REVISION: ${COSY_MODEL_REVISION:-29e01c4e8d000f4bcd70751be16fa94bf3d85a18}
+  qwen:
+    <<: *local
+    build:
+      context: .
+      dockerfile: docker/qwen.Dockerfile
+    ports: ['127.0.0.1:18082:8080']
+    volumes: ['model-cache:/cache', 'qwen-data:/data']
+    environment:
+      <<: *local-env
+      PROVIDER: qwen
+      MODEL_ID: ${QWEN_MODEL_ID:-Qwen/Qwen3-TTS-12Hz-1.7B-Base}
+      MODEL_REVISION: ${QWEN_MODEL_REVISION:-fd4b254389122332181a7c3db7f27e918eec64e3}
+volumes:
+  model-cache:
+  cosy-data:
+  qwen-data:
+  eleven-data:

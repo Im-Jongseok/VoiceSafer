@@ -21,7 +21,10 @@ async function checked(response) {
 }
 
 function App() {
-  const [service, setService] = useState("loading");
+  const [providers, setProviders] = useState([]);
+  const [engine, setEngine] = useState("elevenlabs");
+  const [checking, setChecking] = useState(true);
+  const [transcript, setTranscript] = useState("");
   const [file, setFile] = useState(null);
   const [consent, setConsent] = useState(false);
   const [voiceId, setVoiceId] = useState("");
@@ -30,33 +33,44 @@ function App() {
   const [notice, setNotice] = useState(null);
   const [audioUrl, setAudioUrl] = useState("");
   const busy = Boolean(pending);
+  const local = engine !== "elevenlabs";
+  const textLimit = local ? 500 : 3000;
+  const selected = providers.find((item) => item.id === engine);
   const canRegister =
-    service === "ready" && file && consent && !voiceId && !busy;
+    selected?.ready &&
+    file &&
+    consent &&
+    (!local || transcript.trim()) &&
+    !voiceId &&
+    !busy;
   const canGenerate =
-    service === "ready" && voiceId && consent && script.trim() && !busy;
+    selected?.ready &&
+    voiceId &&
+    consent &&
+    script.trim() &&
+    script.length <= textLimit &&
+    !busy;
+
+  async function refresh(signal) {
+    setChecking(true);
+    try {
+      const response = await checked(await fetch("/api/config", { signal }));
+      const data = await response.json();
+      setProviders(data.providers);
+    } catch (error) {
+      if (error.name !== "AbortError")
+        setNotice({
+          error: true,
+          text: "모델 상태를 확인하지 못했습니다. 다시 확인해 주세요.",
+        });
+    } finally {
+      if (!signal?.aborted) setChecking(false);
+    }
+  }
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/config", { signal: controller.signal })
-      .then(checked)
-      .then((response) => response.json())
-      .then((data) => {
-        setService(data.configured ? "ready" : "unconfigured");
-        if (!data.configured)
-          setNotice({
-            error: true,
-            text: "음성 서비스 연결이 준비되지 않았습니다. 실행 담당자에게 문의해 주세요.",
-          });
-      })
-      .catch((error) => {
-        if (error.name !== "AbortError") {
-          setService("error");
-          setNotice({
-            error: true,
-            text: "서버에 연결하지 못했습니다. 새로고침해 주세요.",
-          });
-        }
-      });
+    refresh(controller.signal);
     return () => controller.abort();
   }, []);
 
@@ -79,12 +93,16 @@ function App() {
     if (
       !next.size ||
       next.size > MAX_FILE ||
-      !/\.(wav|mp3|m4a|flac|ogg|webm)$/i.test(next.name)
+      !(local ? /\.(wav|flac)$/i : /\.(wav|mp3|m4a|flac|ogg|webm)$/i).test(
+        next.name,
+      )
     ) {
       setFile(null);
       setNotice({
         error: true,
-        text: "20MB 이하의 지원하는 음성 파일을 선택해 주세요.",
+        text: local
+          ? "3~20초 길이의 WAV/FLAC 파일을 선택해 주세요. 최대 20MB입니다."
+          : "20MB 이하의 지원하는 음성 파일을 선택해 주세요.",
       });
       return false;
     }
@@ -113,6 +131,8 @@ function App() {
           .slice(0, 80) || "훈련 목소리",
       );
       body.append("consent", "true");
+      body.append("engine", engine);
+      if (local) body.append("transcript", transcript.trim());
       const response = await checked(
         await fetch("/api/voices", { method: "POST", body }),
       );
@@ -146,13 +166,21 @@ function App() {
     if (!canGenerate) return;
     setPending("generate");
     setAudioUrl("");
-    setNotice({ text: "훈련 음성을 만들고 있어요. 잠시만 기다려 주세요." });
+    setNotice({
+      text: local
+        ? "로컬 모델로 음성을 생성하고 있습니다. CPU에서는 수 분이 걸릴 수 있습니다."
+        : "훈련 음성을 만들고 있어요. 잠시만 기다려 주세요.",
+    });
     try {
       const response = await checked(
         await fetch("/api/speech", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ voice_id: voiceId, text: script.trim() }),
+          body: JSON.stringify({
+            voice_id: voiceId,
+            text: script.trim(),
+            engine,
+          }),
         }),
       );
       if (!response.headers.get("content-type")?.includes("audio/wav"))
@@ -176,13 +204,50 @@ function App() {
     <main className="mx-auto max-w-2xl px-5 py-10 sm:py-14">
       <h1 className="text-xl font-semibold">음성 모의 훈련</h1>
 
-      {service !== "ready" && (
-        <p role="status" className="mt-3 text-sm text-slate-500">
-          {service === "loading"
-            ? "서비스 확인 중…"
-            : "음성 서비스 설정을 확인해 주세요."}
+      <div className="mt-6 space-y-2">
+        <label htmlFor="engine" className="block text-sm font-medium">
+          음성 모델
+        </label>
+        <div className="flex items-center gap-3">
+          <select
+            id="engine"
+            value={engine}
+            disabled={busy}
+            className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm"
+            onChange={(event) => {
+              setEngine(event.target.value);
+              setVoiceId("");
+              setFile(null);
+              setTranscript("");
+              setAudioUrl("");
+              setConsent(false);
+              setNotice(null);
+            }}
+          >
+            <option value="elevenlabs">ElevenLabs API</option>
+            <option value="cosyvoice">CosyVoice 3 (로컬)</option>
+            <option value="qwen">Qwen3-TTS (로컬)</option>
+          </select>
+          <button
+            type="button"
+            disabled={busy || checking}
+            onClick={() => refresh()}
+            className="shrink-0 text-xs text-slate-500 underline disabled:opacity-40"
+          >
+            {checking ? "확인 중…" : "상태 확인"}
+          </button>
+        </div>
+        <p role="status" className="text-xs text-slate-500">
+          {checking
+            ? "모델 상태 확인 중…"
+            : selected?.status || "연결 상태를 확인해 주세요."}
         </p>
-      )}
+        {local && (
+          <p className="text-xs text-slate-500">
+            로컬 모델은 하나씩 실행하세요. 실행 후 상태 확인을 눌러 주세요.
+          </p>
+        )}
+      </div>
 
       <form onSubmit={generate} className="mt-8 space-y-7">
         <section
@@ -193,8 +258,9 @@ function App() {
             1. 목소리 등록
           </h2>
           <input
+            key={engine}
             type="file"
-            accept=".wav,.mp3,.m4a,.flac,.ogg,.webm"
+            accept={local ? ".wav,.flac" : ".wav,.mp3,.m4a,.flac,.ogg,.webm"}
             disabled={busy}
             aria-label="참조 음성 파일 선택"
             className="block w-full min-w-0 text-sm text-slate-600 file:mr-3 file:rounded file:border file:border-slate-300 file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-900"
@@ -203,8 +269,31 @@ function App() {
             }}
           />
           <p className="text-xs text-slate-500">
-            WAV, MP3, M4A, FLAC, OGG, WebM · 최대 20MB
+            {local
+              ? "WAV/FLAC · 3~20초 · 16~48kHz · 최대 20MB"
+              : "WAV, MP3, M4A, FLAC, OGG, WebM · 최대 20MB"}
           </p>
+          {local && (
+            <div className="space-y-2">
+              <label htmlFor="transcript" className="block text-sm">
+                참조 음성의 정확한 전사
+              </label>
+              <textarea
+                id="transcript"
+                value={transcript}
+                disabled={busy}
+                maxLength={1500}
+                onChange={(event) => {
+                  setTranscript(event.target.value);
+                  setVoiceId("");
+                  setAudioUrl("");
+                  setNotice(null);
+                }}
+                placeholder="위 파일에서 말한 내용을 그대로 입력하세요."
+                className="block min-h-24 w-full rounded border border-slate-300 p-3 text-sm leading-6"
+              />
+            </div>
+          )}
           <label className="flex items-start gap-2 text-sm leading-6 text-slate-600">
             <input
               type="checkbox"
@@ -218,8 +307,9 @@ function App() {
               }}
             />
             <span>
-              이 목소리의 모의 훈련 사용과 음성 생성을 위한 외부 음성 서비스
-              전달에 동의합니다.
+              {local
+                ? "이 목소리를 모의 훈련에 사용하고 로컬 모델에 참조 음성·전사를 저장하는 데 동의합니다."
+                : "이 목소리의 모의 훈련 사용과 음성 생성을 위한 외부 음성 서비스 전달에 동의합니다."}
             </span>
           </label>
           <button
@@ -258,7 +348,7 @@ function App() {
             id="script"
             value={script}
             disabled={busy}
-            maxLength={3000}
+            maxLength={textLimit}
             onChange={(event) => changeScript(event.target.value)}
             placeholder="생성할 음성의 대본을 입력하세요."
             className="block min-h-44 w-full resize-y rounded border border-slate-300 bg-white p-3 text-sm leading-7 placeholder:text-slate-400 disabled:bg-slate-50"
@@ -266,7 +356,7 @@ function App() {
           <div className="flex flex-wrap justify-between gap-2 text-xs text-slate-500">
             <span>실제 연락처나 개인정보는 넣지 마세요.</span>
             <span className="tabular-nums">
-              {script.length.toLocaleString()} / 3,000
+              {script.length.toLocaleString()} / {textLimit.toLocaleString()}
             </span>
           </div>
           <button

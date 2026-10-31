@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import io
 import json
 import wave
@@ -17,13 +18,19 @@ PCM = b"\x00\x00\x01\x00\xff\xff\x00\x00"
 def api(monkeypatch):
     monkeypatch.setenv("ELEVENLABS_API_KEY", "test-key")
     monkeypatch.delenv("ELEVENLABS_MODEL_ID", raising=False)
+    monkeypatch.setenv("LOCAL_TTS_API_KEY", "local-test-key")
     requests = []
     original = httpx.AsyncClient
     responses = []
 
     def respond(request):
+        if request.url.path == "/v1/info":
+            return httpx.Response(503, json={"status": "loading"})
         requests.append(request)
-        assert request.headers["xi-api-key"] == "test-key"
+        if request.url.host == "api.elevenlabs.io":
+            assert request.headers["xi-api-key"] == "test-key"
+        else:
+            assert request.headers["x-api-key"] == "local-test-key"
         result = responses.pop(0)
         if isinstance(result, Exception):
             raise result
@@ -141,9 +148,9 @@ def test_incomplete_pcm_is_rejected(api, pcm):
 
 def test_missing_key_is_visible_to_ui_without_exposing_a_secret(api, monkeypatch):
     client, requests, _ = api
-    assert client.get("/api/config").json() == {"configured": True}
+    assert client.get("/api/config").json()["configured"] is True
     monkeypatch.delenv("ELEVENLABS_API_KEY")
-    assert client.get("/api/config").json() == {"configured": False}
+    assert client.get("/api/config").json()["configured"] is False
     assert (
         client.post(
             "/api/speech", json={"voice_id": "test", "text": "확인"}
@@ -284,3 +291,164 @@ def test_missing_frontend_build_has_clear_instructions(api, tmp_path, monkeypatc
     page = client.get("/")
     assert page.status_code == 503
     assert "npm run build" in page.json()["detail"]
+
+
+def local_events(engine="cosyvoice"):
+    return [
+        {
+            "type": "start",
+            "provider": engine,
+            "codec": "pcm_s16le",
+            "sample_rate": 24000,
+            "channels": 1,
+        },
+        {"type": "heartbeat"},
+        {"type": "audio", "sequence": 0, "pcm_b64": base64.b64encode(PCM).decode()},
+        {
+            "type": "done",
+            "metrics": {"status": "completed", "audio_bytes": len(PCM), "chunks": 1},
+        },
+    ]
+
+
+def stream_response(events):
+    return httpx.Response(
+        200,
+        text="\n".join(json.dumps(event) for event in events) + "\n",
+        headers={"content-type": "application/x-ndjson"},
+    )
+
+
+@pytest.mark.parametrize("engine,port", [("cosyvoice", 18081), ("qwen", 18082)])
+def test_local_registration_and_stream_to_wav_without_cloud_key(
+    api, monkeypatch, engine, port
+):
+    client, requests, responses = api
+    monkeypatch.delenv("ELEVENLABS_API_KEY")
+    responses.extend(
+        [
+            httpx.Response(200, json={"voice_id": "a" * 24, "provider": engine}),
+            stream_response(local_events(engine)),
+        ]
+    )
+    registered = client.post(
+        "/api/voices",
+        data={
+            "engine": engine,
+            "name": "참조",
+            "consent": "true",
+            "transcript": "정확한 참조 전사",
+        },
+        files={"audio": ("reference.wav", b"valid", "audio/wav")},
+    )
+    assert registered.status_code == 200
+    assert registered.json() == {"voice_id": "a" * 24, "requires_verification": False}
+    assert requests[0].url.port == port
+    assert b'name="transcript"' in requests[0].content
+    result = client.post(
+        "/api/speech",
+        json={
+            "engine": engine,
+            "voice_id": registered.json()["voice_id"],
+            "text": "안녕하세요.",
+        },
+    )
+    assert result.status_code == 200 and result.headers["content-type"] == "audio/wav"
+    assert requests[1].url.path == "/v1/tts/stream" and requests[1].url.port == port
+    with wave.open(io.BytesIO(result.content), "rb") as wav:
+        assert wav.readframes(wav.getnframes()) == PCM
+
+
+@pytest.mark.parametrize("filename,transcript", [("a.m4a", "참조"), ("a.wav", " ")])
+def test_local_reference_requires_supported_format_and_transcript(
+    api, filename, transcript
+):
+    client, requests, _ = api
+    result = client.post(
+        "/api/voices",
+        data={
+            "engine": "cosyvoice",
+            "name": "test",
+            "consent": "true",
+            "transcript": transcript,
+        },
+        files={"audio": (filename, b"valid")},
+    )
+    assert result.status_code == 422 and requests == []
+
+
+def test_local_text_limit_prevents_incompatible_upstream_request(api):
+    client, requests, _ = api
+    result = client.post(
+        "/api/speech", json={"engine": "qwen", "voice_id": "a" * 24, "text": "가" * 501}
+    )
+    assert result.status_code == 422 and requests == []
+
+
+@pytest.mark.parametrize(
+    "problem",
+    [
+        "missing_done",
+        "wrong_bytes",
+        "wrong_sequence",
+        "wrong_provider",
+        "invalid_base64",
+        "provider_error",
+    ],
+)
+def test_local_partial_or_invalid_stream_never_becomes_a_successful_wav(api, problem):
+    client, _, responses = api
+    events = local_events()
+    if problem == "missing_done":
+        events.pop()
+    elif problem == "wrong_bytes":
+        events[-1]["metrics"]["audio_bytes"] += 2
+    elif problem == "wrong_sequence":
+        events[2]["sequence"] = 2
+    elif problem == "wrong_provider":
+        events[0]["provider"] = "qwen"
+    elif problem == "invalid_base64":
+        events[2]["pcm_b64"] = "not@base64"
+    elif problem == "provider_error":
+        events[-1] = {"type": "error", "error_type": "private-details"}
+    responses.append(stream_response(events))
+    result = client.post(
+        "/api/speech",
+        json={"engine": "cosyvoice", "voice_id": "a" * 24, "text": "확인"},
+    )
+    assert result.status_code == 502
+    assert result.headers["content-type"] == "application/json"
+    assert "private-details" not in result.text
+
+
+@pytest.mark.parametrize("status", [409, 422, 404, 503])
+def test_local_busy_and_unready_states_are_preserved(api, status):
+    client, _, responses = api
+    responses.append(httpx.Response(status, json={"detail": "private-provider-info"}))
+    result = client.post(
+        "/api/speech", json={"engine": "qwen", "voice_id": "a" * 24, "text": "확인"}
+    )
+    assert result.status_code == status
+    assert "private-provider-info" not in result.text
+
+
+def test_local_connection_failure_has_a_clear_unavailable_response(api):
+    client, _, responses = api
+    responses.append(httpx.ConnectError("private-connection-details"))
+    result = client.post(
+        "/api/speech", json={"engine": "qwen", "voice_id": "a" * 24, "text": "확인"}
+    )
+    assert result.status_code == 503 and "로컬 모델" in result.json()["detail"]
+    assert "private-connection-details" not in result.text
+
+
+def test_config_lists_models_without_exposing_connection_credentials(api):
+    client, _, _ = api
+    result = client.get("/api/config")
+    assert result.status_code == 200
+    assert [item["id"] for item in result.json()["providers"]] == [
+        "elevenlabs",
+        "cosyvoice",
+        "qwen",
+    ]
+    assert "test-key" not in result.text and "18081" not in result.text
