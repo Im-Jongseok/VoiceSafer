@@ -25,7 +25,6 @@ function App() {
   const [providers, setProviders] = useState([]);
   const [engine, setEngine] = useState("elevenlabs");
   const [checking, setChecking] = useState(true);
-  const [transcript, setTranscript] = useState("");
   const [speakerName, setSpeakerName] = useState("");
   const [file, setFile] = useState(null);
   const [consent, setConsent] = useState(false);
@@ -42,13 +41,7 @@ function App() {
   const textLimit = local ? 500 : 3000;
   const recordingGuide = `저는 ${speakerName.trim() || "[이름]"}이고, 음성 합성 품질 평가를 위해 제 목소리를 녹음하고 복제하는 데 동의합니다.\n오늘 아침에는 비가 조금 내렸는데, 점심이 지나면서 하늘이 맑아졌어요.`;
   const selected = providers.find((item) => item.id === engine);
-  const canRegister =
-    selected?.ready &&
-    file &&
-    consent &&
-    (!local || transcript.trim()) &&
-    !voiceId &&
-    !busy;
+  const canRegister = selected?.ready && file && consent && !voiceId && !busy;
   const canGenerate =
     selected?.ready &&
     voiceId &&
@@ -95,11 +88,10 @@ function App() {
     };
   }, [file]);
 
-  function chooseFile(next) {
+  async function chooseFile(next) {
     if (busy) return false;
     setVoiceId("");
     setAudioUrl("");
-    setTranscript("");
     setNotice(null);
     if (!next) {
       setFile(null);
@@ -116,13 +108,36 @@ function App() {
       setNotice({
         error: true,
         text: local
-          ? "3~20초 길이의 WAV/FLAC 파일을 선택해 주세요. 최대 20MB입니다."
-          : "20MB 이하의 지원하는 음성 파일을 선택해 주세요.",
+          ? "3~60초 길이의 WAV/FLAC 파일을 선택해 주세요. 최대 20MB입니다."
+          : "1분·20MB 이하의 지원하는 음성 파일을 선택해 주세요.",
       });
       return false;
     }
-    setFile(next);
-    return true;
+    setFile(null);
+    setPending("reference");
+    try {
+      const context = new OfflineAudioContext(1, 1, 24000);
+      const audio = await context.decodeAudioData(await next.arrayBuffer());
+      if (audio.duration > 60 || (local && audio.duration < 3)) {
+        throw new Error(
+          local
+            ? "참조 음성은 3~60초로 준비해 주세요."
+            : "참조 음성은 1분 이하로 준비해 주세요.",
+        );
+      }
+      setFile(next);
+      return true;
+    } catch (error) {
+      setNotice({
+        error: true,
+        text: error.message.startsWith("참조 음성은")
+          ? error.message
+          : "음성 파일을 읽지 못했습니다. 다른 파일을 선택해 주세요.",
+      });
+      return false;
+    } finally {
+      setPending("");
+    }
   }
 
   function changeScript(value) {
@@ -147,7 +162,6 @@ function App() {
       );
       body.append("consent", "true");
       body.append("engine", engine);
-      if (local) body.append("transcript", transcript.trim());
       const response = await checked(
         await fetch("/api/voices", { method: "POST", body }),
       );
@@ -233,7 +247,6 @@ function App() {
               setEngine(event.target.value);
               setVoiceId("");
               setFile(null);
-              setTranscript("");
               setAudioUrl("");
               setConsent(false);
               setNotice(null);
@@ -285,7 +298,7 @@ function App() {
               className="block w-full rounded border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50"
             />
             <p className="text-xs text-slate-500">
-              이름을 입력하고 녹음 버튼을 누른 뒤, 아래 두 문장을 20초 안에
+              이름을 입력하고 녹음 버튼을 누른 뒤, 아래 두 문장을 1분 안에
               읽어주세요.
             </p>
             <p
@@ -305,12 +318,9 @@ function App() {
               setFile(next);
               setVoiceId("");
               setAudioUrl("");
-              setTranscript(recordingGuide);
               if (fileInput.current) fileInput.current.value = "";
               setNotice({
-                text: local
-                  ? "녹음을 준비했습니다. 들어보고 전사가 실제 말한 내용과 같은지 확인한 뒤 등록해 주세요."
-                  : "녹음을 준비했습니다. 들어본 뒤 목소리를 등록해 주세요.",
+                text: "녹음을 준비했습니다. 들어본 뒤 목소리를 등록해 주세요.",
               });
             }}
             onError={(text) => setNotice({ error: true, text })}
@@ -328,14 +338,27 @@ function App() {
             aria-label="참조 음성 파일 선택"
             className="block w-full min-w-0 text-sm text-slate-600 file:mr-3 file:rounded file:border file:border-slate-300 file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-900"
             onChange={(event) => {
-              if (!chooseFile(event.target.files[0])) event.target.value = "";
+              const input = event.target;
+              chooseFile(input.files[0]).then((accepted) => {
+                if (!accepted) input.value = "";
+              });
             }}
           />
           <p className="text-xs text-slate-500">
             {local
-              ? "WAV/FLAC · 3~20초 · 16~48kHz · 최대 20MB"
-              : "WAV, MP3, M4A, FLAC, OGG, WebM · 최대 20MB"}
+              ? "WAV/FLAC · 3~60초 · 16~48kHz · 최대 20MB"
+              : "WAV, MP3, M4A, FLAC, OGG, WebM · 최대 1분·20MB"}
           </p>
+          {pending === "reference" && (
+            <p role="status" className="text-xs text-slate-500">
+              음성 파일 길이를 확인하고 있습니다.
+            </p>
+          )}
+          {engine === "cosyvoice" && (
+            <p className="text-xs text-slate-500">
+              CosyVoice는 등록한 음성의 앞 30초까지 참조로 사용합니다.
+            </p>
+          )}
           {file && referenceUrl && (
             <div className="space-y-2">
               <p className="break-all text-xs text-slate-500">
@@ -347,31 +370,6 @@ function App() {
                 src={referenceUrl}
                 className="h-10 w-full"
                 aria-label="등록할 참조 음성 미리듣기"
-              />
-            </div>
-          )}
-          {local && (
-            <div className="space-y-2">
-              <label htmlFor="transcript" className="block text-sm">
-                참조 음성의 정확한 전사
-              </label>
-              <p className="text-xs text-slate-500">
-                마이크 녹음 후 가이드 문장이 입력됩니다. 실제 말한 내용과 다르면
-                수정해 주세요.
-              </p>
-              <textarea
-                id="transcript"
-                value={transcript}
-                disabled={busy}
-                maxLength={1500}
-                onChange={(event) => {
-                  setTranscript(event.target.value);
-                  setVoiceId("");
-                  setAudioUrl("");
-                  setNotice(null);
-                }}
-                placeholder="녹음하거나 선택한 음성에서 말한 내용을 그대로 입력하세요."
-                className="block min-h-24 w-full rounded border border-slate-300 p-3 text-sm leading-6"
               />
             </div>
           )}
@@ -389,7 +387,7 @@ function App() {
             />
             <span>
               {local
-                ? "이 목소리를 모의 훈련에 사용하고 연결된 모델 서버에 참조 음성·전사를 저장하는 데 동의합니다."
+                ? "이 목소리를 모의 훈련에 사용하고 연결된 모델 서버에 참조 음성을 저장하는 데 동의합니다."
                 : "이 목소리의 모의 훈련 사용과 음성 생성을 위한 외부 음성 서비스 전달에 동의합니다."}
             </span>
           </label>

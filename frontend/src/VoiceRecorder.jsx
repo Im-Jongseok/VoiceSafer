@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 const RATE = 24000;
-const MAX_SECONDS = 20;
+const MAX_SECONDS = 60;
 
 async function recordingFile(blob) {
   const context = new OfflineAudioContext(1, 1, RATE);
@@ -218,7 +218,7 @@ export default function VoiceRecorder({
         </div>
       </div>
       <p id="recording-help" className="text-xs text-slate-500">
-        다 읽으면 버튼을 다시 눌러 중지해 주세요. 3~20초 녹음 · 20초 자동 종료
+        다 읽으면 버튼을 다시 눌러 중지해 주세요. 3~60초 녹음 · 1분 자동 종료
       </p>
     </div>
   );

@@ -92,19 +92,20 @@ class LocalEngine:
                 # Upstream grows this shared field while streaming. Reset between requests;
                 # otherwise later calls start with the previous call's largest audio window.
                 self.model.model.token_hop_len = self.initial_token_hop_len
-                prompt_text = 'You are a helpful assistant.<|endofprompt|>' + voice['transcript']
+                prompt_path = voice.get('prompt_path', voice['path'])
                 if voice_id not in self.prompts:
-                    self.model.add_zero_shot_spk(prompt_text, voice['path'], voice_id)
+                    self.model.add_zero_shot_spk('', prompt_path, voice_id)
                     self.prompts[voice_id] = True
-                for result in self.model.inference_zero_shot(
-                    text, prompt_text, voice['path'], zero_shot_spk_id=voice_id,
+                for result in self.model.inference_cross_lingual(
+                    'You are a helpful assistant.<|endofprompt|>' + text,
+                    prompt_path, zero_shot_spk_id=voice_id,
                     stream=True, text_frontend=False,
                 ):
                     yield pcm16(result['tts_speech'].detach().float().cpu().numpy())
             else:
                 if voice_id not in self.prompts:
                     self.prompts[voice_id] = self.model.create_voice_clone_prompt(
-                        ref_audio=voice['path'], ref_text=voice['transcript'], x_vector_only_mode=False)
+                        ref_audio=voice['path'], x_vector_only_mode=True)
                 waves, rate = self.model.generate_voice_clone(
                     text=text, language='Korean', voice_clone_prompt=self.prompts[voice_id],
                     non_streaming_mode=False, max_new_tokens=2048)

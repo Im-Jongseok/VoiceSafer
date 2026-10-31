@@ -124,7 +124,7 @@ async def provider_status(request: Request, error: httpx.HTTPStatusError):
     if "x-api-key" in error.request.headers:
         messages = {
             409: "로컬 모델이 다른 요청을 처리 중입니다. 완료 후 다시 시도해 주세요.",
-            422: "3~20초 WAV/FLAC와 정확한 전사, 500자 이하 대본을 확인해 주세요.",
+            422: "3~60초 WAV/FLAC와 500자 이하 대본을 확인해 주세요.",
             404: "선택한 모델에 목소리를 다시 등록해 주세요.",
             503: "로컬 모델이 아직 준비되지 않았습니다.",
         }
@@ -312,7 +312,6 @@ async def register(
     consent: Annotated[bool, Form()],
     audio: Annotated[UploadFile, File()],
     engine: Annotated[Engine, Form()] = "elevenlabs",
-    transcript: Annotated[str, Form(max_length=1500)] = "",
 ):
     if not consent:
         raise HTTPException(422, "목소리 사용 동의를 확인해 주세요.")
@@ -327,13 +326,10 @@ async def register(
     }:
         raise HTTPException(422, "지원하는 음성 파일을 선택해 주세요.")
     if engine != "elevenlabs":
-        if (
-            Path(filename).suffix.lower() not in {".wav", ".flac"}
-            or not transcript.strip()
-        ):
+        if Path(filename).suffix.lower() not in {".wav", ".flac"}:
             raise HTTPException(
                 422,
-                "로컬 모델은 3~20초 WAV/FLAC와 해당 구간의 정확한 전사가 필요합니다.",
+                "로컬 모델은 3~60초 WAV/FLAC 파일이 필요합니다.",
             )
     content = await audio.read(MAX_FILE + 1)
     if not content:
@@ -347,7 +343,6 @@ async def register(
                 data={
                     "name": name.strip(),
                     "consent": "true",
-                    "transcript": transcript.strip(),
                 },
                 files={
                     "audio": (

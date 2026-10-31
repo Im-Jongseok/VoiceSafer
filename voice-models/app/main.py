@@ -104,13 +104,11 @@ def voices():
 
 
 @app.post('/v1/voices', dependencies=[Depends(authorized)])
-async def add_voice(audio: UploadFile = File(...), transcript: str = Form(...),
+async def add_voice(audio: UploadFile = File(...),
                     name: str = Form('consented-reference'), consent: bool = Form(False)):
     ensure_ready()
     if not consent:
         raise HTTPException(422, 'Voice owner consent is required')
-    if not transcript.strip() or len(transcript) > 1500:
-        raise HTTPException(422, 'Provide the exact transcript (1–1500 characters)')
     raw = await audio.read(20 * 1024 * 1024 + 1)
     if len(raw) > 20 * 1024 * 1024:
         raise HTTPException(413, 'Reference must be at most 20 MiB')
@@ -119,8 +117,8 @@ async def add_voice(audio: UploadFile = File(...), transcript: str = Form(...),
     except Exception:
         raise HTTPException(422, 'Upload a decodable WAV/FLAC file') from None
     duration = len(wave) / sr
-    if not 3 <= duration <= 20 or not 16000 <= sr <= 48000 or wave.shape[1] > 2:
-        raise HTTPException(422, 'Use a 3–20 second, 16–48 kHz, mono/stereo reference')
+    if not 3 <= duration <= 60 or not 16000 <= sr <= 48000 or wave.shape[1] > 2:
+        raise HTTPException(422, 'Use a 3–60 second, 16–48 kHz, mono/stereo reference')
     wave = wave.mean(axis=1)
     if not np.isfinite(wave).all() or np.max(np.abs(wave)) < 0.005:
         raise HTTPException(422, 'Reference is silent or contains invalid samples')
@@ -141,13 +139,18 @@ async def add_voice(audio: UploadFile = File(...), transcript: str = Form(...),
             except Exception as exc:
                 raise HTTPException(502, f'ElevenLabs voice creation failed: {type(exc).__name__}') from None
         else:
-            voice_id = hashlib.sha256(normalized + transcript.encode()).hexdigest()[:24]
+            voice_id = hashlib.sha256(normalized).hexdigest()[:24]
             if len(list(DATA.glob('*.json'))) >= MAX_VOICES and not (DATA / f'{voice_id}.json').exists():
                 raise HTTPException(409, 'Voice limit reached; restart after removing unused references')
             wav_path = DATA / f'{voice_id}.wav'
             wav_path.write_bytes(normalized)
             wav_path.chmod(0o600)
-            meta = {'name': name[:80], 'transcript': transcript, 'path': str(wav_path),
+            prompt_path = wav_path
+            if PROVIDER == 'cosyvoice' and len(wave) > RATE * 30:
+                prompt_path = DATA / f'{voice_id}.prompt.wav'
+                sf.write(prompt_path, wave[:RATE * 30], RATE, format='WAV', subtype='PCM_16')
+                prompt_path.chmod(0o600)
+            meta = {'name': name[:80], 'path': str(wav_path), 'prompt_path': str(prompt_path),
                     'consent_confirmed': True, 'duration_seconds': duration}
             meta_path = DATA / f'{voice_id}.json'
             meta_path.write_text(json.dumps(meta, ensure_ascii=False))

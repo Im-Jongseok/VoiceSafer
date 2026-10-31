@@ -337,14 +337,13 @@ def test_local_registration_and_stream_to_wav_without_cloud_key(
             "engine": engine,
             "name": "참조",
             "consent": "true",
-            "transcript": "정확한 참조 전사",
         },
         files={"audio": ("reference.wav", b"valid", "audio/wav")},
     )
     assert registered.status_code == 200
     assert registered.json() == {"voice_id": "a" * 24, "requires_verification": False}
     assert requests[0].url.port == port
-    assert b'name="transcript"' in requests[0].content
+    assert b'name="transcript"' not in requests[0].content
     result = client.post(
         "/api/speech",
         json={
@@ -359,10 +358,7 @@ def test_local_registration_and_stream_to_wav_without_cloud_key(
         assert wav.readframes(wav.getnframes()) == PCM
 
 
-@pytest.mark.parametrize("filename,transcript", [("a.m4a", "참조"), ("a.wav", " ")])
-def test_local_reference_requires_supported_format_and_transcript(
-    api, filename, transcript
-):
+def test_local_reference_requires_supported_format(api):
     client, requests, _ = api
     result = client.post(
         "/api/voices",
@@ -370,9 +366,8 @@ def test_local_reference_requires_supported_format_and_transcript(
             "engine": "cosyvoice",
             "name": "test",
             "consent": "true",
-            "transcript": transcript,
         },
-        files={"audio": (filename, b"valid")},
+        files={"audio": ("a.m4a", b"valid")},
     )
     assert result.status_code == 422 and requests == []
 
