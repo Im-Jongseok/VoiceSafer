@@ -1,5 +1,6 @@
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import VoiceRecorder from "./VoiceRecorder";
 import "./index.css";
 
 const EXAMPLE =
@@ -32,7 +33,10 @@ function App() {
   const [pending, setPending] = useState("");
   const [notice, setNotice] = useState(null);
   const [audioUrl, setAudioUrl] = useState("");
-  const busy = Boolean(pending);
+  const [referenceUrl, setReferenceUrl] = useState("");
+  const [recordingBusy, setRecordingBusy] = useState(false);
+  const fileInput = useRef(null);
+  const busy = Boolean(pending) || recordingBusy;
   const local = engine !== "elevenlabs";
   const textLimit = local ? 500 : 3000;
   const selected = providers.find((item) => item.id === engine);
@@ -80,6 +84,14 @@ function App() {
     },
     [audioUrl],
   );
+
+  useEffect(() => {
+    const url = file ? URL.createObjectURL(file) : "";
+    setReferenceUrl(url);
+    return () => {
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [file]);
 
   function chooseFile(next) {
     if (busy) return false;
@@ -257,8 +269,31 @@ function App() {
           <h2 id="voice-heading" className="text-sm font-semibold">
             1. 목소리 등록
           </h2>
+          <VoiceRecorder
+            disabled={Boolean(pending)}
+            onBusyChange={(value) => {
+              setRecordingBusy(value);
+              if (value) setNotice(null);
+            }}
+            onRecorded={(next) => {
+              setFile(next);
+              setVoiceId("");
+              setAudioUrl("");
+              setTranscript("");
+              if (fileInput.current) fileInput.current.value = "";
+              setNotice({
+                text: "녹음을 준비했습니다. 들어본 뒤 목소리를 등록해 주세요.",
+              });
+            }}
+            onError={(text) => setNotice({ error: true, text })}
+          />
+          <label htmlFor="reference-file" className="block text-sm">
+            또는 음성 파일 선택
+          </label>
           <input
             key={engine}
+            ref={fileInput}
+            id="reference-file"
             type="file"
             accept={local ? ".wav,.flac" : ".wav,.mp3,.m4a,.flac,.ogg,.webm"}
             disabled={busy}
@@ -273,6 +308,20 @@ function App() {
               ? "WAV/FLAC · 3~20초 · 16~48kHz · 최대 20MB"
               : "WAV, MP3, M4A, FLAC, OGG, WebM · 최대 20MB"}
           </p>
+          {file && referenceUrl && (
+            <div className="space-y-2">
+              <p className="break-all text-xs text-slate-500">
+                선택한 음성: {file.name}
+              </p>
+              <audio
+                key={referenceUrl}
+                controls
+                src={referenceUrl}
+                className="h-10 w-full"
+                aria-label="등록할 참조 음성 미리듣기"
+              />
+            </div>
+          )}
           {local && (
             <div className="space-y-2">
               <label htmlFor="transcript" className="block text-sm">
@@ -289,7 +338,7 @@ function App() {
                   setAudioUrl("");
                   setNotice(null);
                 }}
-                placeholder="위 파일에서 말한 내용을 그대로 입력하세요."
+                placeholder="녹음하거나 선택한 음성에서 말한 내용을 그대로 입력하세요."
                 className="block min-h-24 w-full rounded border border-slate-300 p-3 text-sm leading-6"
               />
             </div>
