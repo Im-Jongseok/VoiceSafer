@@ -4,6 +4,7 @@ import VoiceRecorder from "./VoiceRecorder";
 import { recordingFile } from "./audio";
 import ApplicationNumber from "./ApplicationNumber";
 import SiteFooter from "./SiteFooter";
+import { getScenarios, saveApplication } from "./database";
 
 const INPUT =
   "block w-full rounded border border-slate-300 bg-white px-4 py-3 text-base disabled:bg-slate-50";
@@ -16,13 +17,6 @@ const TIME_SLOTS = [
 ];
 const STEP_PATHS = ["/apply", "/apply/scenario", "/apply/voice"];
 
-const SCENARIOS = [
-  { id: "phone", title: "휴대폰 고장과 대리결제" },
-  { id: "hospital", title: "병원 응급상황과 비용 요청" },
-  { id: "message", title: "익숙한 목소리와 문자 전환" },
-  { id: "app", title: "휴대폰 도움과 앱 설치" },
-  { id: "travel", title: "여행 중 분실과 금전 요청" },
-];
 const CONSENT_ITEMS = [
   {
     key: "privacy",
@@ -31,15 +25,15 @@ const CONSENT_ITEMS = [
     details: [
       [
         "이용 목적",
-        "신청 정보 입력부터 시나리오 선택, 목소리 등록, 완료 화면까지의 흐름을 체험합니다. 실제 개인정보 대신 예시 정보를 사용해 주세요.",
+        "신청 접수, 시나리오 준비, 목소리 확인과 훈련 진행 상태 안내에 사용합니다. 예시 정보로 신청하면 관제에 예시 신청으로 표시됩니다.",
       ],
       [
         "수집 항목",
-        "이름, 연락처, 희망 일정, 음성 및 훈련 기록을 다루는 신청 화면의 예시입니다. 체험 중 입력값·선택값·동의 여부는 현재 창의 메모리에서만 처리합니다. 훈련·통화 기록은 생성하지 않습니다.",
+        "신청인과 대상자의 이름·연락처, 희망 일정, 선택 시나리오, 동의 내역과 등록 음성을 서버에 저장합니다. 향후 연결되는 훈련의 진행 상태와 대화 기록은 권한이 있는 운영자만 확인합니다.",
       ],
       [
         "보관 안내",
-        "입력 정보와 음성은 서버로 전송하거나 브라우저 저장소에 저장하지 않습니다. 완료 시 녹음 파일을 해제하며, 새로고침하거나 창을 닫으면 체험 내역도 사라집니다.",
+        "신청 정보와 음성은 접근 권한으로 보호되는 서버에 보관되며, 운영자가 삭제하기 전까지 유지됩니다. 본인 조회에 필요한 인증 정보는 이 브라우저에 저장됩니다. 신청 번호만으로 다른 사람의 내역을 볼 수는 없습니다.",
       ],
       [
         "동의 선택",
@@ -69,19 +63,19 @@ const CONSENT_ITEMS = [
   {
     key: "voice",
     title: "음성 녹음·복제·모의 훈련 이용 동의",
-    summary: "동의한 목적에 한해 합성 음성을 만드는 절차를 체험해요.",
+    summary: "동의한 목적에 한해 등록 음성을 사용해요.",
     details: [
       [
         "사용 범위",
-        "본인의 목소리를 녹음하거나 파일로 선택해 등록 과정을 체험합니다. 녹음을 원하지 않으면 녹음 없이 체험을 이어갈 수 있습니다.",
+        "본인의 목소리를 녹음하거나 파일로 등록합니다. 녹음 없이 접수할 수도 있으며, 목소리가 없으면 훈련 음성을 준비할 수 없습니다.",
       ],
       [
         "음성 처리",
-        "선택한 음성은 현재 창에서만 미리 들을 수 있습니다. 이 체험판에서는 음성 복제·합성이나 실제 전화 발신을 실행하지 않습니다.",
+        "등록 음성을 비공개 저장소에 업로드하고 신청인과 운영자에게만 재생을 허용합니다. 현재 신청 저장 단계에서는 음성 복제·합성이나 실제 전화 발신을 실행하지 않습니다.",
       ],
       [
         "훈련 전 확인",
-        "실제 서비스의 음성 확인과 최종 확정 절차를 안내합니다. 체험 완료는 실제 훈련 신청이나 일정 확정을 의미하지 않습니다.",
+        "향후 훈련 음성이 준비되면 신청인이 내용을 확인하고 최종 확정한 뒤 운영자가 진행합니다. 신청 접수만으로 전화가 발신되거나 일정이 확정되지는 않습니다.",
       ],
     ],
   },
@@ -96,7 +90,7 @@ const CONSENT_ITEMS = [
       ],
       [
         "진행 방식",
-        "실제 훈련에는 대상자의 사전 동의가 필요합니다. 체험판에서는 예시 연락처를 입력하며 전화나 문자를 보내지 않습니다.",
+        "대상자의 사전 동의가 필요하며, 현재는 신청 내용을 저장하는 단계입니다. 접수 시 전화나 문자를 보내지 않습니다.",
       ],
     ],
   },
@@ -201,9 +195,12 @@ function formatPhone(value) {
     .join("-");
 }
 
-export default function ApplicationPage({ onComplete }) {
+export default function ApplicationPage() {
   const [step, setStep] = useState(1);
-  const scenarios = SCENARIOS;
+  const [scenarios, setScenarios] = useState([]);
+  const [isDemo, setIsDemo] = useState(false);
+  const requestId = useRef(null);
+  if (!requestId.current) requestId.current = crypto.randomUUID();
   const [scenarioId, setScenarioId] = useState("");
   const heading = useRef(null);
   const [info, setInfo] = useState({
@@ -232,7 +229,17 @@ export default function ApplicationPage({ onComplete }) {
   const busy = recording || Boolean(pending);
   const infoComplete = Object.values(info).every((value) => value.trim());
   const currentStep = application ? 4 : step;
-  const guide = `저는 ${info.applicant_name.trim() || "[이름]"}이고, 목소리 등록 화면을 체험하기 위해 제 목소리를 녹음하고 있습니다.\n오늘 아침에는 비가 조금 내렸는데, 점심이 지나면서 하늘이 맑아졌어요.`;
+  const guide = `저는 ${info.applicant_name.trim() || "[이름]"}이고, 훈련 준비를 위한 목소리 등록과 보관에 동의하며 제 목소리를 녹음하고 있습니다.\n오늘 아침에는 비가 조금 내렸는데, 점심이 지나면서 하늘이 맑아졌어요.`;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getScenarios("applicant", controller.signal)
+      .then(setScenarios)
+      .catch((error) => {
+        if (!controller.signal.aborted) setError(error.message);
+      });
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const url = file ? URL.createObjectURL(file) : "";
@@ -268,6 +275,7 @@ export default function ApplicationPage({ onComplete }) {
   }, [step, application]);
 
   function changeInfo(key, value, field) {
+    requestId.current = crypto.randomUUID();
     if (key.endsWith("_phone") && !value.trimStart().startsWith("+")) {
       const digitsBeforeCursor = value
         .slice(0, field.selectionStart)
@@ -356,6 +364,7 @@ export default function ApplicationPage({ onComplete }) {
     }
     setPending("file");
     try {
+      requestId.current = crypto.randomUUID();
       setFile(await recordingFile(next, false));
       setVoiceSkipped(false);
     } catch (error) {
@@ -373,7 +382,7 @@ export default function ApplicationPage({ onComplete }) {
     }
   }
 
-  function submit(event) {
+  async function submit(event) {
     event.preventDefault();
     if (
       busy ||
@@ -391,19 +400,27 @@ export default function ApplicationPage({ onComplete }) {
       setError("희망 날짜와 시간대를 다시 확인해 주세요.");
       return;
     }
-    const receipt = {
-      id: crypto.randomUUID().replaceAll("-", ""),
-      ...info,
-      scenario_title:
-        SCENARIOS.find((item) => item.id === scenarioId)?.title ||
-        "운영자에게 맡기기",
-      voice_registered: Boolean(file),
-      created_at: new Date().toISOString(),
-    };
-    setApplication(receipt);
-    onComplete(receipt);
-    setFile(null);
-    window.scrollTo({ top: 0 });
+    setPending("submit");
+    setError("");
+    try {
+      const saved = await saveApplication({
+        requestId: requestId.current,
+        info,
+        scenarioId,
+        consents,
+        file,
+        isDemo,
+      });
+      setApplication(saved);
+      setFile(null);
+      window.scrollTo({ top: 0 });
+    } catch (error) {
+      setError(
+        error.message || "신청을 저장하지 못했습니다. 다시 시도해 주세요.",
+      );
+    } finally {
+      setPending("");
+    }
   }
 
   return (
@@ -411,12 +428,12 @@ export default function ApplicationPage({ onComplete }) {
       <PublicHeader />
       <div className="public-content application-content">
         <p className="demo-banner">
-          신청 체험 · 실제 접수나 전화 발신은 진행되지 않습니다. 입력 정보는
-          새로고침 시 사라집니다.
+          신청 정보와 목소리를 안전하게 저장합니다. 접수만으로 전화가 발신되거나
+          일정이 확정되지는 않습니다.
         </p>
         <nav aria-label="신청 진행 순서" className="application-progress">
           <ol>
-            {["신청 정보", "시나리오 선택", "목소리 등록", "체험 완료"].map(
+            {["신청 정보", "시나리오 선택", "목소리 등록", "접수 완료"].map(
               (label, index) => (
                 <li
                   key={label}
@@ -461,22 +478,23 @@ export default function ApplicationPage({ onComplete }) {
             className="application-complete space-y-6"
             aria-labelledby="complete-heading"
           >
-            <p className="text-sm text-slate-500">체험 완료</p>
+            <p className="text-sm text-slate-500">
+              {application.is_demo ? "예시 신청 접수 완료" : "접수 완료"}
+            </p>
             <h1
               ref={heading}
               tabIndex={-1}
               id="complete-heading"
               className="text-3xl font-semibold"
             >
-              신청 과정을 모두 체험했어요.
+              신청 내용을 접수했습니다.
             </h1>
             <p className="text-base leading-8 text-slate-500">
-              입력부터 동의, 시나리오 선택, 목소리 등록까지 완료했습니다. 실제
-              신청은 접수되지 않았으며, 결제·음성 합성·전화 발신은 진행되지
-              않습니다.
+              신청 정보와 동의 내역을 저장했습니다. 운영자가 내용을 확인하며,
+              접수만으로 결제·음성 합성·전화 발신을 진행하지 않습니다.
             </p>
             <section className="space-y-4 p-6 sm:p-8">
-              <h2 className="text-lg font-semibold">체험한 신청 내용</h2>
+              <h2 className="text-lg font-semibold">접수한 신청 내용</h2>
               <dl className="space-y-3 text-base">
                 <div>
                   <dt className="text-sm text-slate-500">시나리오</dt>
@@ -485,22 +503,22 @@ export default function ApplicationPage({ onComplete }) {
                 <div>
                   <dt className="text-sm text-slate-500">희망 일정</dt>
                   <dd>
-                    {info.preferred_date} · {info.preferred_time}
+                    {info.preferred_date} · {application.preferred_time_label}
                   </dd>
                 </div>
                 <div>
                   <dt className="text-sm text-slate-500">목소리</dt>
                   <dd>
                     {application.voice_registered
-                      ? "등록 과정을 체험했습니다. 음성 파일은 해제되었습니다."
-                      : "녹음 없이 체험했습니다."}
+                      ? "비공개 저장소에 등록했습니다. 품질 확인 전입니다."
+                      : "목소리 없이 접수했습니다. 음성 등록이 필요합니다."}
                   </dd>
                 </div>
               </dl>
               <p className="text-sm leading-7 text-slate-500">
-                실제 서비스에서는 예상 훈련 음성 확인 → 신청인 최종 확정 →
-                운영자 확인 후 훈련 순서로 진행합니다. 체험 번호 조회는 현재
-                창에서만 가능합니다.
+                훈련 음성이 준비되면 내용 확인 → 신청인 최종 확정 → 운영자 확인
+                순서로 진행합니다. 신청한 브라우저에서 아래 번호로 내역을 다시
+                조회할 수 있습니다.
               </p>
             </section>
             <ApplicationNumber id={application.id} />
@@ -556,6 +574,8 @@ export default function ApplicationPage({ onComplete }) {
                   type="button"
                   className="demo-example-button"
                   onClick={() => {
+                    setIsDemo(true);
+                    requestId.current = crypto.randomUUID();
                     setInfo({
                       applicant_name: "김민지",
                       applicant_phone: "010-0000-0000",
@@ -741,7 +761,10 @@ export default function ApplicationPage({ onComplete }) {
                             name="scenario"
                             value={item.id}
                             checked={scenarioId === item.id}
-                            onChange={() => setScenarioId(item.id)}
+                            onChange={() => {
+                              requestId.current = crypto.randomUUID();
+                              setScenarioId(item.id);
+                            }}
                             className="shrink-0 accent-primary"
                           />
                           <span>{item.title}</span>
@@ -783,6 +806,7 @@ export default function ApplicationPage({ onComplete }) {
                       if (value) setError("");
                     }}
                     onRecorded={(next) => {
+                      requestId.current = crypto.randomUUID();
                       setVoiceSkipped(false);
                       setFile(next);
                       if (input.current) input.current.value = "";
@@ -847,15 +871,17 @@ export default function ApplicationPage({ onComplete }) {
                       disabled={busy}
                       onClick={() => {
                         setFile(null);
+                        requestId.current = crypto.randomUUID();
                         setVoiceSkipped(true);
                         setError("");
                       }}
                     >
-                      녹음 없이 체험하기
+                      목소리 없이 접수하기
                     </button>
                     {voiceSkipped && (
                       <p role="status" className="mt-3 text-sm text-primary">
-                        목소리 등록을 건너뛰고 체험을 완료할 수 있습니다.
+                        목소리 없이 신청 내용을 저장합니다. 훈련 음성 준비에는
+                        음성 등록이 필요합니다.
                       </p>
                     )}
                   </div>
@@ -915,9 +941,9 @@ export default function ApplicationPage({ onComplete }) {
                     <path d="M5 12h14m-6-6 6 6-6 6" />
                   </svg>
                 ) : pending === "submit" ? (
-                  "체험 완료 중…"
+                  "신청 저장 중…"
                 ) : (
-                  "체험 완료하기"
+                  "신청하기"
                 )}
               </button>
             </div>

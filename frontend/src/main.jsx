@@ -1,16 +1,17 @@
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, Suspense, lazy, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import LandingPage from "./LandingPage";
-import ApplicationPage from "./ApplicationPage";
-import LookupPage from "./LookupPage";
+const ApplicationPage = lazy(() => import("./ApplicationPage"));
+const LookupPage = lazy(() => import("./LookupPage"));
+const OperatorPage = lazy(() => import("./OperatorPage"));
 import "./index.css";
 
 function App() {
   const [path, setPath] = useState(window.location.pathname);
-  const [application, setApplication] = useState(null);
   function navigate(url) {
     window.history.pushState(null, "", url);
     setPath(window.location.pathname);
+    window.dispatchEvent(new Event("app:navigate"));
     window.scrollTo({ top: 0 });
   }
   useEffect(() => {
@@ -38,9 +39,14 @@ function App() {
       )
         return;
       if (
-        !["/", "/lookup", "/apply", "/apply/scenario", "/apply/voice"].includes(
-          url.pathname,
-        )
+        ![
+          "/",
+          "/lookup",
+          "/apply",
+          "/apply/scenario",
+          "/apply/voice",
+          "/control",
+        ].includes(url.pathname)
       )
         return;
       event.preventDefault();
@@ -55,19 +61,32 @@ function App() {
   }, []);
   useEffect(() => {
     document.title = path.startsWith("/apply")
-      ? "신청 체험 | VoiceVaccine"
+      ? "훈련 신청 | VoiceVaccine"
       : path === "/lookup"
-        ? "체험 신청 조회 | VoiceVaccine"
-        : "VoiceVaccine | 보이스피싱 예방 모의훈련";
+        ? "신청 조회 | VoiceVaccine"
+        : path === "/control"
+          ? "관제 | VoiceVaccine"
+          : "VoiceVaccine | 보이스피싱 예방 모의훈련";
   }, [path]);
-  if (path.startsWith("/apply"))
-    return <ApplicationPage onComplete={setApplication} />;
-  if (path === "/lookup") return <LookupPage application={application} />;
+  if (path.startsWith("/apply")) return <ApplicationPage />;
+  if (path === "/lookup") return <LookupPage />;
+  if (path === "/control") return <OperatorPage />;
   return <LandingPage navigate={navigate} />;
 }
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    <App />
+    <Suspense
+      fallback={
+        <p
+          role="status"
+          className="flex min-h-screen items-center justify-center text-sm text-slate-400"
+        >
+          화면을 불러오는 중…
+        </p>
+      }
+    >
+      <App />
+    </Suspense>
   </StrictMode>,
 );

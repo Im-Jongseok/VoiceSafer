@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 
-export default function ApplicationNumber({ id }) {
+export default function ApplicationNumber({ id, compact = false }) {
   const number = useRef(null);
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
@@ -25,9 +25,15 @@ export default function ApplicationNumber({ id }) {
   }
 
   return (
-    <div className="space-y-2 rounded-xl bg-slate-50 p-6">
-      <p className="text-sm text-slate-500">
-        체험 신청 번호 · 현재 창에서만 조회 가능
+    <div
+      className={
+        compact
+          ? "operator-receipt-code"
+          : "space-y-2 rounded-xl bg-slate-50 p-6"
+      }
+    >
+      <p className={compact ? "sr-only" : "text-sm text-slate-500"}>
+        신청 번호 · 신청한 브라우저에서 조회
       </p>
       <div className="flex items-start gap-3">
         <code
@@ -66,7 +72,10 @@ export default function ApplicationNumber({ id }) {
           </svg>
         </button>
       </div>
-      <p role="status" className="text-sm text-slate-500">
+      <p
+        role="status"
+        className={compact ? "sr-only" : "text-sm text-slate-500"}
+      >
         {message}
       </p>
     </div>

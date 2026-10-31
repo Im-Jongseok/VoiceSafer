@@ -1,69 +1,115 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import PublicHeader from "./PublicHeader";
 import SiteFooter from "./SiteFooter";
+import ReferenceAudio from "./ReferenceAudio";
+import { getApplication, STATUS_LABELS, subscribeRecords } from "./database";
 
-export default function LookupPage({ application }) {
+export default function LookupPage() {
   const [number, setNumber] = useState(() => window.location.hash.slice(1));
-  const [searched, setSearched] = useState(() => Boolean(window.location.hash));
+  const [lookup, setLookup] = useState(() => window.location.hash.slice(1));
+  const [application, setApplication] = useState(null);
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+  const [connection, setConnection] = useState("connecting");
+  const request = useRef(null);
   const heading = useRef(null);
-  const found = searched && application?.id === number.trim();
+  const load = useCallback(async () => {
+    if (!lookup) return;
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
+    setPending(true);
+    try {
+      const saved = await getApplication(lookup, controller.signal);
+      if (!controller.signal.aborted) {
+        setApplication(saved);
+        setError("");
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setApplication(null);
+        setError(error.message);
+      }
+    } finally {
+      if (!controller.signal.aborted) setPending(false);
+    }
+  }, [lookup]);
   useEffect(() => {
     heading.current?.focus();
     function sync() {
-      setNumber(window.location.hash.slice(1));
-      setSearched(Boolean(window.location.hash));
+      if (window.location.pathname !== "/lookup") return;
+      const value = window.location.hash.slice(1);
+      setNumber(value);
+      setLookup(value);
+      setApplication(null);
+      setError("");
     }
-    window.addEventListener("hashchange", sync);
     window.addEventListener("popstate", sync);
+    window.addEventListener("app:navigate", sync);
     return () => {
-      window.removeEventListener("hashchange", sync);
       window.removeEventListener("popstate", sync);
+      window.removeEventListener("app:navigate", sync);
     };
   }, []);
+  useEffect(() => {
+    load();
+    return () => request.current?.abort();
+  }, [load]);
+  useEffect(() => {
+    if (!application) return;
+    return subscribeRecords(
+      "applicant",
+      "application:" + application.database_id,
+      load,
+      setConnection,
+    );
+  }, [application?.database_id, load]);
   return (
     <main className="public-page landing-page application-page">
       <PublicHeader showLookup={false} />
       <div className="public-content application-content lookup-content">
-        <p className="demo-banner">
-          신청 체험 · 실제 접수 내역이 아닙니다. 체험 번호는 현재 창에서만
-          조회할 수 있습니다.
-        </p>
         <section className="application-form lookup-card space-y-8">
           <div className="application-form-heading">
             <p className="application-eyebrow">우리 가족의 안심 연습</p>
             <h1 ref={heading} tabIndex={-1}>
-              {found ? "체험 신청 확인" : "신청 조회"}
+              {application ? "신청 확인" : "신청 조회"}
             </h1>
-            <p>체험 완료 시 받은 신청 번호로 입력한 내용을 확인해 보세요.</p>
+            <p>
+              신청한 브라우저에서 신청 번호로 내역과 진행 상태를 확인하세요.
+            </p>
           </div>
-          {!found && (
+          {!application && (
             <form
               className="application-fieldset space-y-3"
               onSubmit={(event) => {
                 event.preventDefault();
+                setError("");
                 window.history.replaceState(
                   null,
                   "",
                   `/lookup#${encodeURIComponent(number.trim())}`,
                 );
-                setSearched(true);
+                if (lookup === number.trim()) load();
+                else setLookup(number.trim());
               }}
             >
-              <label htmlFor="application-number">체험 신청 번호</label>
+              <label htmlFor="application-number">신청 번호</label>
               <div className="lookup-number-field">
                 <input
                   id="application-number"
                   value={number}
-                  onChange={(event) => {
-                    setNumber(event.target.value);
-                    setSearched(false);
-                  }}
+                  onChange={(event) => setNumber(event.target.value)}
                   required
-                  maxLength={32}
-                  placeholder="체험 신청 번호를 붙여넣어 주세요."
+                  maxLength={36}
+                  placeholder="신청 번호를 붙여넣어 주세요."
                   autoComplete="off"
                 />
-                <button type="submit" aria-label="조회하기" title="조회하기">
+                <button
+                  type="submit"
+                  aria-label="조회하기"
+                  title="조회하기"
+                  disabled={pending}
+                >
                   <svg
                     width="23"
                     height="23"
@@ -81,26 +127,48 @@ export default function LookupPage({ application }) {
               </div>
             </form>
           )}
-          {found ? (
+          {pending && !application && (
+            <p role="status" className="text-sm text-slate-500">
+              신청 내역을 확인하고 있습니다.
+            </p>
+          )}
+          {error && (
+            <p role="alert" className="text-sm leading-7 text-red-600">
+              {error}
+            </p>
+          )}
+          {application && (
             <section className="space-y-6" aria-labelledby="status-heading">
-              <div>
-                <p className="text-sm text-primary">체험 완료</p>
-                <h2 id="status-heading" className="mt-2 text-xl font-semibold">
-                  신청 흐름을 모두 확인했어요.
-                </h2>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm text-primary">
+                    {application.is_demo ? "예시 신청" : "신청 내역"}
+                  </p>
+                  <h2
+                    id="status-heading"
+                    className="mt-2 text-xl font-semibold"
+                  >
+                    {application.submission_complete
+                      ? STATUS_LABELS[application.status] || "접수 확인"
+                      : "목소리 등록 대기"}
+                  </h2>
+                </div>
+                <span className="live-indicator" data-state={connection}>
+                  {connection === "live" ? "실시간 연결" : "연결 확인 중"}
+                </span>
               </div>
               <dl className="grid gap-5 sm:grid-cols-2">
                 {[
                   ["신청인", application.applicant_name],
                   ["대상자", application.target_name],
                   ["희망 날짜", application.preferred_date],
-                  ["희망 시간대", application.preferred_time],
+                  ["희망 시간대", application.preferred_time_label],
                   ["시나리오", application.scenario_title],
                   [
-                    "목소리",
-                    application.voice_registered
-                      ? "등록 체험 완료 · 음성 파일 해제"
-                      : "녹음 없이 체험",
+                    "접수 일시",
+                    new Date(application.created_at).toLocaleString("ko-KR", {
+                      timeZone: "Asia/Seoul",
+                    }),
                   ],
                 ].map(([label, value]) => (
                   <div key={label}>
@@ -109,28 +177,28 @@ export default function LookupPage({ application }) {
                   </div>
                 ))}
               </dl>
+              <section className="space-y-4 rounded-2xl border border-slate-200 p-5">
+                <h3 className="font-medium">등록한 목소리 확인</h3>
+                <ReferenceAudio application={application} role="applicant" />
+                <p className="text-sm leading-7 text-slate-500">
+                  등록 음성을 확인하는 단계입니다. 훈련 음성 생성과 실제 전화는
+                  아직 연결하지 않았습니다.
+                </p>
+              </section>
               <p className="rounded-2xl bg-primary-soft p-5 text-sm leading-7 text-slate-500">
-                실제 서비스는 예상 훈련 음성을 확인하고 최종 확정한 뒤 운영자가
-                훈련을 진행합니다. 이 체험판에서는 실제 신청, 음성 합성, 일정
-                확정, 결제 및 발신이 이루어지지 않습니다.
+                희망 일정은 확정된 일정이 아닙니다. 운영자가 신청과 목소리를
+                확인한 뒤 훈련을 준비합니다. 접수만으로 결제하거나 전화를 걸지
+                않습니다.
               </p>
             </section>
-          ) : (
-            searched && (
-              <p role="alert" className="text-sm leading-7 text-slate-500">
-                현재 창에서 완료한 체험 번호와 일치하지 않습니다. 새로고침하거나
-                창을 닫으면 체험 내역은 사라집니다. 신청 체험을 다시 진행해
-                주세요.
-              </p>
-            )
           )}
           <div className="flex flex-wrap justify-center gap-4">
-            {!found && (
+            {!application && (
               <a
                 className="application-submit inline-flex items-center bg-primary px-7 py-3 text-white"
                 href="/apply"
               >
-                신청 체험하기
+                훈련 신청하기
               </a>
             )}
             <a
