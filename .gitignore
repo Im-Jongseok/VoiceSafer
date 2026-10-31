@@ -1,11 +1,5 @@
+.DS_Store
+node_modules/
+dist/
 .env
 .env.*
-.venv/
-__pycache__/
-.pytest_cache/
-.ruff_cache/
-*.wav
-*.mp3
-*.m4a
-*.flac
-*.webm
