@@ -1,10 +1,11 @@
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import VoiceRecorder from "./VoiceRecorder";
 import "./index.css";
 
 const EXAMPLE =
   "엄마, 나야. 낯선 번호로 가족이라는 연락이 오면, 바로 믿기보다 원래 알고 있던 번호로 다시 전화해서 확인해 줘. 이 음성은 보이스피싱 예방을 위한 모의 훈련이야.";
+const MAX_FILE = 20 * 1024 * 1024;
 const BUTTON =
   "rounded border px-3 py-2 text-sm font-medium disabled:opacity-40";
 
@@ -35,6 +36,7 @@ function App() {
   const [audioUrl, setAudioUrl] = useState("");
   const [referenceUrl, setReferenceUrl] = useState("");
   const [recordingBusy, setRecordingBusy] = useState(false);
+  const fileInput = useRef(null);
   const busy = Boolean(pending) || recordingBusy;
   const local = engine !== "elevenlabs";
   const textLimit = local ? 500 : 3000;
@@ -92,6 +94,36 @@ function App() {
       if (url) URL.revokeObjectURL(url);
     };
   }, [file]);
+
+  function chooseFile(next) {
+    if (busy) return false;
+    setVoiceId("");
+    setAudioUrl("");
+    setTranscript("");
+    setNotice(null);
+    if (!next) {
+      setFile(null);
+      return false;
+    }
+    if (
+      !next.size ||
+      next.size > MAX_FILE ||
+      !(local ? /\.(wav|flac)$/i : /\.(wav|mp3|m4a|flac|ogg|webm)$/i).test(
+        next.name,
+      )
+    ) {
+      setFile(null);
+      setNotice({
+        error: true,
+        text: local
+          ? "3~20초 길이의 WAV/FLAC 파일을 선택해 주세요. 최대 20MB입니다."
+          : "20MB 이하의 지원하는 음성 파일을 선택해 주세요.",
+      });
+      return false;
+    }
+    setFile(next);
+    return true;
+  }
 
   function changeScript(value) {
     setScript(value);
@@ -274,6 +306,7 @@ function App() {
               setVoiceId("");
               setAudioUrl("");
               setTranscript(recordingGuide);
+              if (fileInput.current) fileInput.current.value = "";
               setNotice({
                 text: local
                   ? "녹음을 준비했습니다. 들어보고 전사가 실제 말한 내용과 같은지 확인한 뒤 등록해 주세요."
@@ -282,14 +315,40 @@ function App() {
             }}
             onError={(text) => setNotice({ error: true, text })}
           />
+          <label htmlFor="reference-file" className="block text-sm">
+            또는 음성 파일 선택
+          </label>
+          <input
+            key={engine}
+            ref={fileInput}
+            id="reference-file"
+            type="file"
+            accept={local ? ".wav,.flac" : ".wav,.mp3,.m4a,.flac,.ogg,.webm"}
+            disabled={busy}
+            aria-label="참조 음성 파일 선택"
+            className="block w-full min-w-0 text-sm text-slate-600 file:mr-3 file:rounded file:border file:border-slate-300 file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-900"
+            onChange={(event) => {
+              if (!chooseFile(event.target.files[0])) event.target.value = "";
+            }}
+          />
+          <p className="text-xs text-slate-500">
+            {local
+              ? "WAV/FLAC · 3~20초 · 16~48kHz · 최대 20MB"
+              : "WAV, MP3, M4A, FLAC, OGG, WebM · 최대 20MB"}
+          </p>
           {file && referenceUrl && (
-            <audio
-              key={referenceUrl}
-              controls
-              src={referenceUrl}
-              className="h-10 w-full"
-              aria-label="등록할 참조 음성 미리듣기"
-            />
+            <div className="space-y-2">
+              <p className="break-all text-xs text-slate-500">
+                선택한 음성: {file.name}
+              </p>
+              <audio
+                key={referenceUrl}
+                controls
+                src={referenceUrl}
+                className="h-10 w-full"
+                aria-label="등록할 참조 음성 미리듣기"
+              />
+            </div>
           )}
           {local && (
             <div className="space-y-2">
@@ -311,7 +370,7 @@ function App() {
                   setAudioUrl("");
                   setNotice(null);
                 }}
-                placeholder="녹음에서 말한 내용을 그대로 입력하세요."
+                placeholder="녹음하거나 선택한 음성에서 말한 내용을 그대로 입력하세요."
                 className="block min-h-24 w-full rounded border border-slate-300 p-3 text-sm leading-6"
               />
             </div>
