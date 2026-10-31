@@ -452,3 +452,42 @@ def test_config_lists_models_without_exposing_connection_credentials(api):
         "qwen",
     ]
     assert "test-key" not in result.text and "18081" not in result.text
+
+
+def test_gpu_model_status_uses_remote_url_without_exposing_credentials(monkeypatch):
+    monkeypatch.setenv("LOCAL_TTS_API_KEY", "private-gpu-key")
+    monkeypatch.setenv("COSYVOICE_URL", "https://gpu.example.test/")
+    original = httpx.AsyncClient
+
+    def respond(request):
+        assert str(request.url) == "https://gpu.example.test/v1/info"
+        assert request.headers["x-api-key"] == "private-gpu-key"
+        return httpx.Response(
+            200,
+            json={
+                "provider": "cosyvoice",
+                "load": {"status": "ready"},
+                "device": "cuda",
+            },
+        )
+
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: original(transport=httpx.MockTransport(respond), **kwargs),
+    )
+    result = asyncio.run(main.local_status("cosyvoice"))
+    assert result["ready"] is True and result["status"] == "준비 완료 · GPU"
+    assert "private-gpu-key" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("engine", ["cosyvoice", "qwen"])
+def test_remote_model_receives_speech_over_https(api, monkeypatch, engine):
+    client, requests, responses = api
+    monkeypatch.setenv(engine.upper() + "_URL", "https://gpu.example.test/")
+    responses.append(stream_response(local_events(engine)))
+    result = client.post(
+        "/api/speech", json={"engine": engine, "voice_id": "a" * 24, "text": "확인"}
+    )
+    assert result.status_code == 200 and result.headers["content-type"] == "audio/wav"
+    assert str(requests[0].url) == "https://gpu.example.test/v1/tts/stream"

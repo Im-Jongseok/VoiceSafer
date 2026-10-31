@@ -182,7 +182,7 @@ def local_settings(engine: str):
     url = os.getenv(
         engine.upper() + "_URL", f"http://127.0.0.1:{LOCAL_MODELS[engine][1]}"
     )
-    return url, key
+    return url.rstrip("/"), key
 
 
 @asynccontextmanager
@@ -215,7 +215,11 @@ async def local_status(engine: str):
                     and data.get("provider") == engine
                     and data.get("load", {}).get("status") == "ready"
                 )
-                status = "준비 완료" if ready else "모델 준비 중 또는 초기화 실패"
+                status = (
+                    "준비 완료 · " + ("GPU" if data.get("device") == "cuda" else "CPU")
+                    if ready
+                    else "모델 준비 중 또는 초기화 실패"
+                )
         except (httpx.HTTPError, ValueError):
             pass
     return {
