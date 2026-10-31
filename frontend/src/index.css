@@ -1605,44 +1605,626 @@
   }
 }
 
-.landing-service-notice {
-  position: fixed;
-  inset: 0;
-  width: min(420px, calc(100% - 40px));
-  margin: auto;
-  padding: 30px;
-  border: 1px solid #e1e7ff;
-  border-radius: 24px;
-  background: white;
-  color: #303744;
-  box-shadow: 0 20px 80px #14295b24;
+/* Application screens share the landing page's navigation, spacing and surfaces. */
+.application-page {
+  background: linear-gradient(180deg, white, #fafbfe 480px);
 }
-.landing-service-notice::backdrop {
-  background: #17244755;
+.application-header .landing-header-actions {
+  gap: 8px;
+  margin-left: auto;
 }
-.landing-service-notice h2 {
-  font-size: 23px;
-  font-weight: 700;
-  letter-spacing: -0.04em;
+.application-header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  color: #707888;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
 }
-.landing-service-notice p {
-  margin-top: 14px;
-  color: #7c879e;
-  font-size: 15px;
-  line-height: 1.8;
-  word-break: keep-all;
+.application-header-icon:hover {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
 }
-.landing-service-notice button {
-  display: block;
-  min-height: 46px;
-  margin: 24px 0 0 auto;
-  padding: 12px 24px;
-  border-radius: 999px;
-  background: var(--color-primary);
-  color: white;
-  font-size: 14px;
+.application-content {
+  width: 100%;
+  max-width: 1000px;
+  min-height: calc(100dvh - 76px);
+  margin: 0 auto;
+  padding: 48px 28px 96px;
+}
+.application-progress {
+  max-width: 840px;
+  margin: 0 auto 38px;
+}
+.application-progress ol {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.application-progress li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 13px;
+  color: #abb1bf;
+  text-align: center;
+}
+.application-progress-label {
+  min-height: 24px;
+  font-size: 16px;
   font-weight: 600;
 }
-.landing-service-notice button:hover {
+.application-progress-track {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+.application-progress-line {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 3px;
+  background: #e8ebf2;
+}
+.application-progress-node {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 50px;
+  height: 50px;
+  border: 1px solid #e5e8f1;
+  border-radius: 50%;
+  background: #fafbfe;
+  color: #abb1bf;
+  font-size: 15px;
+  font-weight: 600;
+}
+.application-progress li[data-state="current"] {
+  color: var(--color-primary);
+}
+.application-progress li[data-state="current"] .application-progress-node {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: white;
+  box-shadow: 0 0 0 5px #2353ff0a;
+}
+.application-progress li[data-state="complete"] {
+  color: #6b7ba4;
+}
+.application-progress li[data-state="complete"] .application-progress-node {
+  border-color: #dce4ff;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+.application-progress li[data-state="complete"] .application-progress-line {
+  background: #cbd6ff;
+}
+.application-form,
+.application-complete {
+  padding: clamp(28px, 4.5vw, 52px);
+  border: 1px solid #e9ecf3;
+  border-radius: 30px;
+  background: white;
+  box-shadow: 0 10px 40px #182e6504;
+}
+.application-form-heading {
+  padding-bottom: 28px;
+  border-bottom: 1px solid #eef0f5;
+}
+.application-eyebrow {
+  margin-bottom: 14px;
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+.application-form-heading h1,
+.application-complete > h1 {
+  color: #202124;
+  font-size: clamp(30px, 3.6vw, 42px);
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.055em;
+  word-break: keep-all;
+}
+.application-form-heading > p:not(.application-eyebrow) {
+  margin-top: 14px;
+  color: #858b98;
+  font-size: 15px;
+  line-height: 1.85;
+  word-break: keep-all;
+}
+.application-form-heading > p:last-child {
+  margin-top: 16px;
+  font-size: 12px;
+}
+.application-fieldset {
+  min-width: 0;
+  padding: 0;
+}
+.application-fieldset + .application-fieldset {
+  padding-top: 8px;
+}
+.application-fieldset legend {
+  margin-bottom: 20px;
+  color: #363b45;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+}
+.application-fieldset label > span:first-child {
+  display: block;
+  color: #727b8b;
+  font-size: 14px;
+}
+.application-fieldset input:not([type="radio"]),
+.application-fieldset select {
+  width: 100%;
+  min-width: 0;
+  min-height: 56px;
+  padding: 14px 17px;
+  border: 1px solid #e2e6ef;
+  border-radius: 13px;
+  background-color: #fcfdff;
+  color: #303744;
+  font-size: 16px;
+  line-height: 1.5;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+.application-fieldset input::placeholder {
+  color: #adb4c2;
+}
+.application-fieldset input:focus-visible,
+.application-fieldset select:focus-visible {
+  border-color: var(--color-primary);
+  outline: none;
+  box-shadow: 0 0 0 4px #2353ff0c;
+}
+.application-fieldset select {
+  appearance: none;
+  padding-right: 46px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%23818b9e' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 17px center;
+}
+.application-fieldset input:disabled,
+.application-fieldset select:disabled {
+  background-color: #f7f8fb;
+}
+.application-fieldset > p {
+  color: #8b93a4;
+  font-size: 13px;
+  line-height: 1.85;
+}
+.application-consent {
+  padding: 21px 23px;
+  border: 1px solid #e5eafb;
+  border-radius: 16px;
+  background: #f8faff;
+  color: #788399;
+  font-size: 14px;
+  line-height: 1.9;
+}
+.application-consent > input {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.application-scenario-options > .grid {
+  gap: 14px;
+}
+.application-scenario-choice {
+  min-height: 84px;
+  padding: 20px;
+  border: 1px solid #e4e8f1;
+  border-radius: 17px;
+  background: #fcfdff;
+  transition:
+    border-color 0.16s ease,
+    background-color 0.16s ease;
+}
+.application-scenario-choice:hover {
+  border-color: #afc0ff;
+}
+.application-scenario-choice.is-selected {
+  border-color: var(--color-primary);
+  background: #f5f7ff;
+}
+.application-scenario-choice > input {
+  width: 18px;
+  height: 18px;
+}
+.application-fieldset .application-scenario-choice > span {
+  color: #606d86;
+  font-size: 15px;
+  line-height: 1.6;
+  word-break: keep-all;
+}
+.application-fieldset .application-scenario-choice.is-selected > span {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+.application-recording {
+  border-color: #e5eafa;
+  border-radius: 23px;
+  background: #f8faff;
+}
+.application-recording #recording-guide {
+  border-color: #e5eafb;
+  border-radius: 16px;
+  background: white;
+  color: #67748d;
+  font-size: 16px;
+  line-height: 2;
+}
+.application-recording button[aria-label="마이크로 녹음"] {
+  border-color: #d6dfff;
+  box-shadow: 0 0 0 7px #2353ff04;
+}
+.application-recording button[aria-label="음성 파일 선택"] {
+  border-color: #d9e1f8;
+  color: #7b8dbb;
+}
+.application-audio-preview {
+  padding: 18px 20px 12px;
+  border: 1px solid #e5eafb;
+  border-radius: 16px;
+  background: white;
+}
+.application-audio-preview > p {
+  margin-bottom: 10px;
+  color: #7886a1;
+  font-size: 13px;
+}
+.application-audio-preview audio {
+  display: block;
+  width: 100%;
+  height: 44px;
+  border-radius: 12px;
+  color-scheme: light;
+}
+.application-audio-preview audio::-webkit-media-controls-enclosure,
+.application-audio-preview audio::-webkit-media-controls-panel {
+  background-color: #f8faff;
+}
+.application-actions {
+  padding-top: 8px;
+}
+.application-submit {
+  min-height: 58px;
+  min-width: 58px;
+  border-radius: 999px;
+  font-weight: 650;
+  transition:
+    background-color 0.16s ease,
+    transform 0.16s ease;
+}
+.application-submit:hover:not(:disabled) {
   background: var(--color-primary-hover);
+  transform: translateY(-1px);
+}
+.application-complete > p:first-child {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+.application-complete > section {
+  border-color: #e8ecf6;
+  border-radius: 22px;
+  background: #f9faff;
+}
+.application-complete > section h2 {
+  color: #36405a;
+}
+.application-complete button,
+.application-complete a[href^="/lookup"] {
+  border-radius: 999px;
+}
+.application-complete audio {
+  border-radius: 999px;
+}
+@media (max-width: 767px) {
+  .application-content {
+    padding: 36px 20px 72px;
+  }
+  .application-progress {
+    margin-bottom: 28px;
+  }
+  .application-form,
+  .application-complete {
+    padding: 28px 24px;
+    border-radius: 24px;
+  }
+  .application-form-heading {
+    padding-bottom: 24px;
+  }
+  .application-fieldset legend {
+    font-size: 16px;
+  }
+}
+@media (max-width: 639px) {
+  .application-content {
+    padding: 32px 14px 64px;
+  }
+  .application-header .landing-header-actions {
+    gap: 0;
+  }
+  .application-header-icon {
+    width: 36px;
+    height: 36px;
+  }
+  .application-progress li {
+    gap: 8px;
+  }
+  .application-progress-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
+    padding: 0 3px;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  .application-progress-node {
+    width: 40px;
+    height: 40px;
+    font-size: 13px;
+  }
+  .application-form,
+  .application-complete {
+    padding: 26px 20px;
+  }
+  .application-form-heading h1,
+  .application-complete > h1 {
+    font-size: 29px;
+  }
+  .application-consent {
+    padding: 18px;
+    font-size: 13px;
+  }
+  .application-fieldset input:not([type="radio"]),
+  .application-fieldset select {
+    min-height: 54px;
+    font-size: 16px;
+  }
+  .application-scenario-choice {
+    min-height: 76px;
+    padding: 17px;
+  }
+  .application-recording {
+    padding: 22px 18px;
+  }
+  .application-recording #recording-guide {
+    padding: 18px;
+    font-size: 14px;
+  }
+  .application-submit {
+    min-width: 54px;
+    min-height: 54px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .application-submit,
+  .application-scenario-choice,
+  .application-fieldset input,
+  .application-fieldset select {
+    transition: none;
+  }
+}
+
+.application-consents {
+  min-width: 0;
+}
+.application-consent-all {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 24px;
+  border: 1px solid #dfe6ff;
+  border-radius: 17px;
+  background: #f6f8ff;
+  color: #303b50;
+}
+.application-consent-all strong {
+  font-size: 17px;
+  font-weight: 650;
+  line-height: 1.6;
+  letter-spacing: -0.035em;
+}
+.application-consents input {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.application-consent-row {
+  padding: 26px 0;
+  border-bottom: 1px solid #e9ecf5;
+}
+.application-consent-row-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.application-consent-row-heading > label {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 0;
+}
+.application-consent-row-heading input {
+  margin-top: 4px;
+}
+.application-consent-title {
+  display: block;
+  color: #39445a;
+  font-size: 16px;
+  font-weight: 550;
+  line-height: 1.7;
+  word-break: keep-all;
+}
+.application-consent-title em {
+  margin-right: 9px;
+  color: var(--color-primary);
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 600;
+}
+.application-consent-row small {
+  display: block;
+  margin-top: 6px;
+  color: #8a95ac;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.application-consent-row button {
+  flex-shrink: 0;
+  padding: 8px 0 8px 8px;
+  color: #7c8bb2;
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.application-consent-row button:hover {
+  color: var(--color-primary);
+}
+.application-consent-detail {
+  margin: 20px 0 0 34px;
+  padding: 20px;
+  border-radius: 14px;
+  background: #f8faff;
+}
+.application-consent-detail > div + div {
+  margin-top: 16px;
+}
+.application-consent-detail dt {
+  color: #526181;
+  font-size: 13px;
+  font-weight: 600;
+}
+.application-consent-detail dd {
+  margin-top: 5px;
+  color: #7a869e;
+  font-size: 13px;
+  line-height: 1.9;
+  word-break: keep-all;
+}
+.lookup-content {
+  padding-top: 54px;
+}
+.lookup-card .application-form-heading > p:last-child {
+  font-size: 15px;
+}
+.lookup-card > section {
+  border-color: #e9edf6;
+}
+.lookup-card > section > section {
+  border-color: #e5eafb;
+  border-radius: 20px;
+  background: #f8faff;
+}
+.lookup-card input#application-number {
+  border-radius: 13px;
+  background: #fcfdff;
+}
+.lookup-card dt {
+  width: 76px;
+  color: #8490a7;
+}
+.lookup-card #status-heading {
+  color: #35405a;
+}
+.lookup-home-action {
+  display: flex;
+  justify-content: center;
+  padding-top: 16px;
+}
+.lookup-home-action a {
+  min-width: 160px;
+}
+@media (max-width: 639px) {
+  .application-consent-all {
+    gap: 12px;
+    padding: 19px 16px;
+  }
+  .application-consent-all strong {
+    font-size: 15px;
+  }
+  .application-consent-row-heading {
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .application-consent-row-heading > label {
+    gap: 10px;
+  }
+  .application-consent-title {
+    font-size: 14px;
+  }
+  .application-consent-title em {
+    margin-right: 6px;
+    font-size: 12px;
+  }
+  .application-consent-row small,
+  .application-consent-row button {
+    font-size: 12px;
+  }
+  .application-consent-detail {
+    margin-left: 0;
+    padding: 17px;
+  }
+  .application-audio-preview {
+    padding: 15px 12px 10px;
+  }
+  .lookup-content {
+    padding-top: 32px;
+  }
+}
+
+.public-page input[type="checkbox"],
+.public-page input[type="radio"] {
+  accent-color: var(--color-primary);
+}
+.demo-banner {
+  margin-bottom: 30px;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: var(--color-primary-soft);
+  color: #63739a;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.demo-example-button {
+  padding: 10px 18px;
+  border: 1px solid #dfe6ff;
+  border-radius: 999px;
+  color: var(--color-primary);
+  font-size: 14px;
+}
+.demo-example-button:hover:not(:disabled) {
+  background: var(--color-primary-soft);
+}
+.lookup-number-field {
+  position: relative;
+}
+.lookup-number-field input {
+  padding-right: 60px !important;
+}
+.lookup-number-field button {
+  position: absolute;
+  top: 0;
+  right: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 50px;
+  height: 100%;
+  color: var(--color-primary);
 }

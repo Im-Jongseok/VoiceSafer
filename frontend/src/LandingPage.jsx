@@ -507,20 +507,8 @@ function FeaturePreview({ title, items, wave = false }) {
   );
 }
 
-export default function LandingPage() {
+export default function LandingPage({ navigate }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [notice, setNotice] = useState("");
-  const dialog = useRef(null);
-  const returnFocus = useRef(null);
-
-  function openNotice(service, event) {
-    returnFocus.current = event.currentTarget.closest(".landing-mobile-nav")
-      ? document.querySelector(".landing-menu-toggle")
-      : event.currentTarget;
-    setMenuOpen(false);
-    setNotice(service);
-    dialog.current.showModal();
-  }
 
   return (
     <main className="public-page landing-page">
@@ -546,14 +534,14 @@ export default function LandingPage() {
           <button
             type="button"
             className="landing-lookup-link"
-            onClick={(event) => openNotice("lookup", event)}
+            onClick={() => navigate("/lookup")}
           >
             신청 조회
           </button>
           <button
             type="button"
             className="landing-header-apply"
-            onClick={(event) => openNotice("apply", event)}
+            onClick={() => navigate("/apply")}
           >
             훈련 신청
           </button>
@@ -605,10 +593,7 @@ export default function LandingPage() {
                 <ArrowIcon />
               </a>
             ))}
-            <button
-              type="button"
-              onClick={(event) => openNotice("lookup", event)}
-            >
+            <button type="button" onClick={() => navigate("/lookup")}>
               신청 조회
               <ArrowIcon />
             </button>
@@ -618,6 +603,7 @@ export default function LandingPage() {
 
       <section className="landing-hero" aria-labelledby="landing-heading">
         <div className="landing-hero-copy">
+          <p className="application-eyebrow">해커톤 프로젝트 · 신청 체험판</p>
           <h1 id="landing-heading" className="landing-hero-heading">
             <span>가장 믿는 목소리로,</span>
             <span>
@@ -635,7 +621,7 @@ export default function LandingPage() {
             <button
               type="button"
               className="landing-hero-action"
-              onClick={(event) => openNotice("apply", event)}
+              onClick={() => navigate("/apply")}
             >
               모의훈련 신청하기
               <ArrowIcon />
@@ -762,8 +748,11 @@ export default function LandingPage() {
           </p>
         </div>
         <div className="landing-pricing-card">
-          <span className="landing-plan-badge">모의훈련 1회</span>
+          <span className="landing-plan-badge">요금 구성 예시</span>
           <h3>가족을 위한 모의훈련</h3>
+          <p className="mt-3 text-sm leading-6 text-slate-500">
+            해커톤 기획 예시이며 실제 판매·결제는 진행하지 않습니다.
+          </p>
           <p className="landing-price">
             <span>1회</span>
             <strong>
@@ -784,9 +773,9 @@ export default function LandingPage() {
           <button
             type="button"
             className="landing-hero-action"
-            onClick={(event) => openNotice("apply", event)}
+            onClick={() => navigate("/apply")}
           >
-            1회 훈련 신청하기
+            신청 과정 체험하기
             <ArrowIcon />
           </button>
         </div>
@@ -802,7 +791,7 @@ export default function LandingPage() {
           <button
             type="button"
             className="landing-text-link"
-            onClick={(event) => openNotice("lookup", event)}
+            onClick={() => navigate("/lookup")}
           >
             내 신청 조회하기
             <ArrowIcon />
@@ -851,33 +840,8 @@ export default function LandingPage() {
       </section>
 
       <div className="landing-footer">
-        <SiteFooter onServiceClick={openNotice} />
+        <SiteFooter />
       </div>
-      <dialog
-        ref={dialog}
-        className="landing-service-notice"
-        aria-labelledby="service-notice-heading"
-        aria-describedby="service-notice-description"
-        onCancel={(event) => {
-          event.preventDefault();
-          dialog.current.close();
-        }}
-        onClose={() => {
-          setNotice("");
-          returnFocus.current?.focus();
-        }}
-      >
-        <h2 id="service-notice-heading">
-          {notice === "lookup" ? "신청 조회 준비 중" : "훈련 신청 준비 중"}
-        </h2>
-        <p id="service-notice-description">
-          서비스 오픈을 준비하고 있습니다. 정식 오픈 후 훈련 신청과 조회를
-          이용하실 수 있습니다.
-        </p>
-        <button type="button" onClick={() => dialog.current.close()}>
-          확인
-        </button>
-      </dialog>
     </main>
   );
 }
