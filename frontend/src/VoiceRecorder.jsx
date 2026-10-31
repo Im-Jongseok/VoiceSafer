@@ -59,6 +59,14 @@ export default function VoiceRecorder({
   const active = useRef(null);
   const [state, setState] = useState("idle");
   const [seconds, setSeconds] = useState(0);
+  const label =
+    state === "requesting"
+      ? "녹음 요청 취소"
+      : state === "recording"
+        ? "녹음 중지"
+        : state === "processing"
+          ? "녹음 처리 중…"
+          : "마이크로 녹음";
 
   useEffect(
     () => () => {
@@ -169,35 +177,48 @@ export default function VoiceRecorder({
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex items-center gap-4">
         <button
           type="button"
           disabled={disabled || state === "processing"}
           onClick={state === "idle" ? start : stop}
-          className="rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 hover:enabled:bg-slate-50 disabled:opacity-40"
+          aria-label={label}
+          aria-describedby="recording-guide recording-help"
+          aria-pressed={state === "recording"}
+          className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-full border-2 transition-colors disabled:opacity-40 ${state === "recording" ? "border-red-500 bg-red-50" : "border-slate-200 bg-white hover:enabled:border-red-400 hover:enabled:bg-red-50"}`}
         >
-          {state === "requesting"
-            ? "녹음 요청 취소"
-            : state === "recording"
-              ? "녹음 중지"
-              : state === "processing"
-                ? "녹음 처리 중…"
-                : "마이크로 녹음"}
+          <span className="sr-only">{label}</span>
+          <span
+            aria-hidden="true"
+            className={
+              state === "requesting" || state === "processing"
+                ? "h-6 w-6 rounded-full border-2 border-slate-200 border-t-slate-600 motion-safe:animate-spin"
+                : state === "recording"
+                  ? "h-5 w-5 rounded-sm bg-red-500"
+                  : "h-7 w-7 rounded-full bg-red-500"
+            }
+          />
         </button>
-        {state === "recording" && (
-          <span role="status" className="text-sm tabular-nums text-red-600">
-            녹음 중 · {seconds} / {MAX_SECONDS}초
-          </span>
-        )}
-        {state === "requesting" && (
-          <span role="status" className="text-xs text-slate-500">
-            마이크 권한을 허용해 주세요.
-          </span>
-        )}
+        <div className="space-y-1">
+          <p className="text-sm font-medium">
+            {state === "idle" ? "녹음 시작" : label}
+          </p>
+          <p
+            role="status"
+            className={`text-xs tabular-nums ${state === "recording" ? "text-red-600" : "text-slate-500"}`}
+          >
+            {state === "recording"
+              ? `녹음 중 · ${seconds} / ${MAX_SECONDS}초`
+              : state === "requesting"
+                ? "마이크 권한을 허용해 주세요."
+                : state === "processing"
+                  ? "미리듣기를 준비하고 있습니다."
+                  : "원형 버튼을 눌러 녹음하세요."}
+          </p>
+        </div>
       </div>
-      <p className="text-xs text-slate-500">
-        3~20초 동안 말해 주세요. 20초에 자동 종료되며, 등록 전에 들어볼 수
-        있습니다.
+      <p id="recording-help" className="text-xs text-slate-500">
+        다 읽으면 버튼을 다시 눌러 중지해 주세요. 3~20초 녹음 · 20초 자동 종료
       </p>
     </div>
   );

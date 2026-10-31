@@ -26,6 +26,7 @@ function App() {
   const [engine, setEngine] = useState("elevenlabs");
   const [checking, setChecking] = useState(true);
   const [transcript, setTranscript] = useState("");
+  const [speakerName, setSpeakerName] = useState("");
   const [file, setFile] = useState(null);
   const [consent, setConsent] = useState(false);
   const [voiceId, setVoiceId] = useState("");
@@ -39,6 +40,7 @@ function App() {
   const busy = Boolean(pending) || recordingBusy;
   const local = engine !== "elevenlabs";
   const textLimit = local ? 500 : 3000;
+  const recordingGuide = `저는 ${speakerName.trim() || "[이름]"}이고, 음성 합성 품질 평가를 위해 제 목소리를 녹음하고 복제하는 데 동의합니다.\n오늘 아침에는 비가 조금 내렸는데, 점심이 지나면서 하늘이 맑아졌어요.`;
   const selected = providers.find((item) => item.id === engine);
   const canRegister =
     selected?.ready &&
@@ -97,6 +99,7 @@ function App() {
     if (busy) return false;
     setVoiceId("");
     setAudioUrl("");
+    setTranscript("");
     setNotice(null);
     if (!next) {
       setFile(null);
@@ -264,8 +267,36 @@ function App() {
           <h2 id="voice-heading" className="text-sm font-semibold">
             1. 목소리 등록
           </h2>
+          <div className="space-y-3">
+            <label htmlFor="speaker-name" className="block text-sm">
+              이름
+            </label>
+            <input
+              id="speaker-name"
+              type="text"
+              value={speakerName}
+              disabled={busy}
+              maxLength={40}
+              onChange={(event) => setSpeakerName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.preventDefault();
+              }}
+              placeholder="녹음할 분의 이름"
+              className="block w-full rounded border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50"
+            />
+            <p className="text-xs text-slate-500">
+              이름을 입력하고 녹음 버튼을 누른 뒤, 아래 두 문장을 20초 안에
+              읽어주세요.
+            </p>
+            <p
+              id="recording-guide"
+              className="whitespace-pre-line rounded bg-slate-50 p-4 text-sm leading-7"
+            >
+              {recordingGuide}
+            </p>
+          </div>
           <VoiceRecorder
-            disabled={Boolean(pending)}
+            disabled={Boolean(pending) || !speakerName.trim()}
             onBusyChange={(value) => {
               setRecordingBusy(value);
               if (value) setNotice(null);
@@ -274,10 +305,12 @@ function App() {
               setFile(next);
               setVoiceId("");
               setAudioUrl("");
-              setTranscript("");
+              setTranscript(recordingGuide);
               if (fileInput.current) fileInput.current.value = "";
               setNotice({
-                text: "녹음을 준비했습니다. 들어본 뒤 목소리를 등록해 주세요.",
+                text: local
+                  ? "녹음을 준비했습니다. 들어보고 전사가 실제 말한 내용과 같은지 확인한 뒤 등록해 주세요."
+                  : "녹음을 준비했습니다. 들어본 뒤 목소리를 등록해 주세요.",
               });
             }}
             onError={(text) => setNotice({ error: true, text })}
@@ -322,6 +355,10 @@ function App() {
               <label htmlFor="transcript" className="block text-sm">
                 참조 음성의 정확한 전사
               </label>
+              <p className="text-xs text-slate-500">
+                마이크 녹음 후 가이드 문장이 입력됩니다. 실제 말한 내용과 다르면
+                수정해 주세요.
+              </p>
               <textarea
                 id="transcript"
                 value={transcript}
