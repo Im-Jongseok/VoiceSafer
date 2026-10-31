@@ -131,6 +131,41 @@ export async function getApplication(number, signal, role = "applicant") {
     );
   return receipt(row);
 }
+export async function findApplicationsByPhone(value, signal) {
+  const normalized = phone(value);
+  if (
+    !/^\+[1-9][0-9]{6,14}$/.test(normalized) ||
+    (!value.trim().startsWith("+") &&
+      !/^010[0-9]{8}$/.test(value.replace(/[\s()-]/g, "")))
+  )
+    throw new Error("신청자 휴대폰 번호를 정확히 입력해 주세요.");
+  const session = await applicantSession();
+  return checked(
+    await clientFor()
+      .from("applications")
+      .select(RECEIPT_FIELDS)
+      .eq("owner_id", session.user.id)
+      .eq("applicant_phone", normalized)
+      .eq("submission_complete", true)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(100)
+      .abortSignal(signal),
+    "신청 내역을 불러오지 못했습니다.",
+  ).map(receipt);
+}
+export async function cancelApplication(id, signal) {
+  await applicantSession();
+  const result = await clientFor()
+    .rpc("cancel_application", { p_application_id: databaseId(id) })
+    .abortSignal(signal);
+  if (result.error)
+    throw new Error(
+      result.error.code === "55000"
+        ? "전화 진행 중이거나 종료된 신청은 취소할 수 없습니다. 신청 상태를 다시 확인해 주세요."
+        : "신청을 취소하지 못했습니다. 연결 상태와 신청 내역을 확인한 뒤 다시 시도해 주세요.",
+    );
+}
 export async function saveApplication({
   requestId,
   info,

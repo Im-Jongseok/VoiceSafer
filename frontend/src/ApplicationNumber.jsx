@@ -33,7 +33,7 @@ export default function ApplicationNumber({ id, compact = false }) {
       }
     >
       <p className={compact ? "sr-only" : "text-sm text-slate-500"}>
-        신청 번호 · 신청한 브라우저에서 조회
+        접수 번호
       </p>
       <div className="flex items-start gap-3">
         <code

@@ -2,46 +2,66 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import PublicHeader from "./PublicHeader";
 import SiteFooter from "./SiteFooter";
 import ReferenceAudio from "./ReferenceAudio";
-import { getApplication, STATUS_LABELS, subscribeRecords } from "./database";
+import {
+  cancelApplication,
+  findApplicationsByPhone,
+  getApplication,
+  STATUS_LABELS,
+  subscribeRecords,
+} from "./database";
 
 export default function LookupPage() {
-  const [number, setNumber] = useState(() => window.location.hash.slice(1));
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [matches, setMatches] = useState([]);
+  const [searched, setSearched] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [canceling, setCanceling] = useState(false);
+  const cancelRequest = useRef(null);
   const [lookup, setLookup] = useState(() => window.location.hash.slice(1));
   const [application, setApplication] = useState(null);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const [connection, setConnection] = useState("connecting");
   const request = useRef(null);
+  const phoneRequest = useRef(null);
   const heading = useRef(null);
-  const load = useCallback(async () => {
-    if (!lookup) return;
-    request.current?.abort();
-    const controller = new AbortController();
-    request.current = controller;
-    setPending(true);
-    try {
-      const saved = await getApplication(lookup, controller.signal);
-      if (!controller.signal.aborted) {
-        setApplication(saved);
-        setError("");
+  const load = useCallback(
+    async (options = {}) => {
+      if (!lookup) return;
+      request.current?.abort();
+      const controller = new AbortController();
+      request.current = controller;
+      setPending(true);
+      try {
+        const saved = await getApplication(lookup, controller.signal);
+        if (!controller.signal.aborted) {
+          setApplication(saved);
+          if (!options.preserveError) setError("");
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setApplication(null);
+          setError(error.message);
+        }
+      } finally {
+        if (!controller.signal.aborted) setPending(false);
       }
-    } catch (error) {
-      if (!controller.signal.aborted) {
-        setApplication(null);
-        setError(error.message);
-      }
-    } finally {
-      if (!controller.signal.aborted) setPending(false);
-    }
-  }, [lookup]);
+    },
+    [lookup],
+  );
   useEffect(() => {
     heading.current?.focus();
     function sync() {
       if (window.location.pathname !== "/lookup") return;
       const value = window.location.hash.slice(1);
-      setNumber(value);
       setLookup(value);
+      request.current?.abort();
+      phoneRequest.current?.abort();
+      cancelRequest.current?.abort();
+      setCanceling(false);
       setApplication(null);
+      setConfirmCancel(false);
+      setPending(false);
       setError("");
     }
     window.addEventListener("popstate", sync);
@@ -49,6 +69,8 @@ export default function LookupPage() {
     return () => {
       window.removeEventListener("popstate", sync);
       window.removeEventListener("app:navigate", sync);
+      cancelRequest.current?.abort();
+      phoneRequest.current?.abort();
     };
   }, []);
   useEffect(() => {
@@ -56,6 +78,7 @@ export default function LookupPage() {
     return () => request.current?.abort();
   }, [load]);
   useEffect(() => {
+    setConfirmCancel(false);
     if (!application) return;
     return subscribeRecords(
       "applicant",
@@ -64,6 +87,79 @@ export default function LookupPage() {
       setConnection,
     );
   }, [application?.database_id, load]);
+  function openApplication(value) {
+    if (lookup === value) {
+      load();
+      return;
+    }
+    request.current?.abort();
+    setApplication(null);
+    setError("");
+    setConfirmCancel(false);
+    window.history.pushState(null, "", `/lookup#${value}`);
+    setLookup(value);
+  }
+  async function search(event) {
+    event.preventDefault();
+    request.current?.abort();
+    phoneRequest.current?.abort();
+    const controller = new AbortController();
+    phoneRequest.current = controller;
+    setApplication(null);
+    setMatches([]);
+    setSearched(false);
+    setError("");
+    setPending(true);
+    window.history.replaceState(null, "", "/lookup");
+    try {
+      const rows = await findApplicationsByPhone(
+        phoneNumber,
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
+      setMatches(rows);
+      setSearched(true);
+      if (rows.length === 1) openApplication(rows[0].id);
+      else setLookup("");
+    } catch (error) {
+      if (!controller.signal.aborted) setError(error.message);
+    } finally {
+      if (!controller.signal.aborted) setPending(false);
+    }
+  }
+  async function cancel() {
+    if (canceling || !application) return;
+    const id = application.database_id;
+    const controller = new AbortController();
+    cancelRequest.current = controller;
+    setCanceling(true);
+    setError("");
+    try {
+      await cancelApplication(id, controller.signal);
+      if (controller.signal.aborted) return;
+      setApplication((current) =>
+        current?.database_id === id
+          ? { ...current, status: "canceled" }
+          : current,
+      );
+      setMatches((current) =>
+        current.map((row) =>
+          row.database_id === id ? { ...row, status: "canceled" } : row,
+        ),
+      );
+      setConfirmCancel(false);
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setError(error.message);
+        load({ preserveError: true });
+      }
+    } finally {
+      if (!controller.signal.aborted) setCanceling(false);
+    }
+  }
+  const canCancel =
+    application?.submission_complete &&
+    ["received", "preparing", "ready"].includes(application.status);
   return (
     <main className="public-page landing-page application-page">
       <PublicHeader showLookup={false} />
@@ -75,34 +171,40 @@ export default function LookupPage() {
               {application ? "신청 확인" : "신청 조회"}
             </h1>
             <p>
-              신청한 브라우저에서 신청 번호로 내역과 진행 상태를 확인하세요.
+              신청한 브라우저에서 신청자 전화번호로 내역과 진행 상태를
+              확인하세요.
             </p>
           </div>
           {!application && (
-            <form
-              className="application-fieldset space-y-3"
-              onSubmit={(event) => {
-                event.preventDefault();
-                setError("");
-                window.history.replaceState(
-                  null,
-                  "",
-                  `/lookup#${encodeURIComponent(number.trim())}`,
-                );
-                if (lookup === number.trim()) load();
-                else setLookup(number.trim());
-              }}
-            >
-              <label htmlFor="application-number">신청 번호</label>
+            <form className="application-fieldset space-y-3" onSubmit={search}>
+              <label htmlFor="applicant-phone">신청자 전화번호</label>
               <div className="lookup-number-field">
                 <input
-                  id="application-number"
-                  value={number}
-                  onChange={(event) => setNumber(event.target.value)}
+                  id="applicant-phone"
+                  type="tel"
+                  inputMode="tel"
+                  value={phoneNumber}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (value.trimStart().startsWith("+"))
+                      setPhoneNumber(value);
+                    else {
+                      const digits = value.replace(/\D/g, "").slice(0, 11);
+                      setPhoneNumber(
+                        [
+                          digits.slice(0, 3),
+                          digits.slice(3, 7),
+                          digits.slice(7),
+                        ]
+                          .filter(Boolean)
+                          .join("-"),
+                      );
+                    }
+                  }}
                   required
-                  maxLength={36}
-                  placeholder="신청 번호를 붙여넣어 주세요."
-                  autoComplete="off"
+                  maxLength={30}
+                  placeholder="010-1234-5678"
+                  autoComplete="tel"
                 />
                 <button
                   type="submit"
@@ -126,6 +228,43 @@ export default function LookupPage() {
                 </button>
               </div>
             </form>
+          )}
+          {matches.length > 1 && (
+            <section
+              className="lookup-matches space-y-3"
+              aria-label="조회된 신청 목록"
+            >
+              <p className="text-sm text-slate-500">
+                신청 {matches.length}건
+                {matches.length === 100 ? " · 최근 100건" : ""} · 확인할 신청을
+                선택하세요.
+              </p>
+              {matches.map((item) => (
+                <button
+                  type="button"
+                  key={item.id}
+                  disabled={canceling}
+                  aria-pressed={application?.id === item.id}
+                  onClick={() => openApplication(item.id)}
+                >
+                  <span>
+                    <strong>
+                      {item.applicant_name} → {item.target_name}
+                    </strong>
+                    <small>
+                      {item.preferred_date} · {item.preferred_time_label}
+                    </small>
+                  </span>
+                  <span>{STATUS_LABELS[item.status] || item.status}</span>
+                </button>
+              ))}
+            </section>
+          )}
+          {searched && !pending && matches.length === 0 && !error && (
+            <p role="status" className="text-sm leading-7 text-slate-500">
+              조회 가능한 신청이 없습니다. 신청자 전화번호와 신청한 브라우저를
+              확인해 주세요.
+            </p>
           )}
           {pending && !application && (
             <p role="status" className="text-sm text-slate-500">
@@ -185,11 +324,51 @@ export default function LookupPage() {
                   아직 연결하지 않았습니다.
                 </p>
               </section>
-              <p className="rounded-2xl bg-primary-soft p-5 text-sm leading-7 text-slate-500">
-                희망 일정은 확정된 일정이 아닙니다. 운영자가 신청과 목소리를
-                확인한 뒤 훈련을 준비합니다. 접수만으로 결제하거나 전화를 걸지
-                않습니다.
+              <p
+                className="rounded-2xl bg-primary-soft p-5 text-sm leading-7 text-slate-500"
+                role={application.status === "canceled" ? "status" : undefined}
+              >
+                {application.status === "canceled"
+                  ? "신청이 취소되었습니다. 이 신청으로 훈련 전화를 진행하지 않습니다."
+                  : "희망 일정은 확정된 일정이 아닙니다. 운영자가 신청과 목소리를 확인한 뒤 훈련을 준비합니다. 접수만으로 결제하거나 전화를 걸지 않습니다."}
               </p>
+              {canCancel && (
+                <div className="border-t border-slate-100 pt-5">
+                  {confirmCancel ? (
+                    <div className="space-y-4">
+                      <p className="text-sm leading-7 text-slate-600">
+                        신청을 취소할까요? 취소한 신청은 되돌릴 수 없습니다.
+                      </p>
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          type="button"
+                          disabled={canceling}
+                          onClick={cancel}
+                          className="rounded-lg bg-slate-900 px-5 py-3 text-sm text-white disabled:opacity-40"
+                        >
+                          {canceling ? "취소 중…" : "취소 확정"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={canceling}
+                          onClick={() => setConfirmCancel(false)}
+                          className="rounded-lg border border-slate-200 px-5 py-3 text-sm text-slate-500"
+                        >
+                          돌아가기
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmCancel(true)}
+                      className="text-sm text-slate-500 underline underline-offset-4"
+                    >
+                      신청 취소
+                    </button>
+                  )}
+                </div>
+              )}
             </section>
           )}
           <div className="flex flex-wrap justify-center gap-4">

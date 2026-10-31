@@ -33,7 +33,7 @@ const CONSENT_ITEMS = [
       ],
       [
         "보관 안내",
-        "신청 정보와 음성은 접근 권한으로 보호되는 서버에 보관되며, 운영자가 삭제하기 전까지 유지됩니다. 본인 조회에 필요한 인증 정보는 이 브라우저에 저장됩니다. 신청 번호만으로 다른 사람의 내역을 볼 수는 없습니다.",
+        "신청 정보와 음성은 접근 권한으로 보호되는 서버에 보관되며, 운영자가 삭제하기 전까지 유지됩니다. 본인 조회에 필요한 인증 정보는 이 브라우저에 저장됩니다. 전화번호나 접수 번호만으로 다른 사람의 내역을 볼 수는 없습니다.",
       ],
       [
         "동의 선택",
@@ -517,14 +517,14 @@ export default function ApplicationPage() {
               </dl>
               <p className="text-sm leading-7 text-slate-500">
                 훈련 음성이 준비되면 내용 확인 → 신청인 최종 확정 → 운영자 확인
-                순서로 진행합니다. 신청한 브라우저에서 아래 번호로 내역을 다시
-                조회할 수 있습니다.
+                순서로 진행합니다. 신청한 브라우저에서 신청자 전화번호로 내역을
+                다시 조회할 수 있습니다.
               </p>
             </section>
             <ApplicationNumber id={application.id} />
             <div className="flex justify-center pt-3">
               <a
-                href={`/lookup#${application.id}`}
+                href="/lookup"
                 className="inline-flex min-h-12 items-center justify-center rounded-lg bg-primary px-8 py-3.5 text-base font-medium text-white"
               >
                 신청 조회하기
