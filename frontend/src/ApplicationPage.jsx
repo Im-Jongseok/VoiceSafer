@@ -29,7 +29,7 @@ const CONSENT_ITEMS = [
       ],
       [
         "수집 항목",
-        "신청인과 대상자의 이름·연락처, 희망 일정, 선택 시나리오, 동의 내역과 등록 음성을 서버에 저장합니다. 향후 연결되는 훈련의 진행 상태와 대화 기록은 권한이 있는 운영자만 확인합니다.",
+        "신청인과 대상자의 이름·연락처·관계, 희망 일정, 선택 시나리오, 동의 내역과 등록 음성을 서버에 저장합니다. 향후 연결되는 훈련의 진행 상태와 대화 기록은 권한이 있는 운영자만 확인합니다.",
       ],
       [
         "보관 안내",
@@ -203,11 +203,13 @@ export default function ApplicationPage() {
   if (!requestId.current) requestId.current = crypto.randomUUID();
   const [scenarioId, setScenarioId] = useState("");
   const heading = useRef(null);
+  const [relationshipChoice, setRelationshipChoice] = useState("");
   const [info, setInfo] = useState({
     applicant_name: "",
     applicant_phone: "",
     target_name: "",
     target_phone: "",
+    target_relationship: "",
     preferred_date: "",
     preferred_time: "",
   });
@@ -575,12 +577,14 @@ export default function ApplicationPage() {
                   className="demo-example-button"
                   onClick={() => {
                     setIsDemo(true);
+                    setRelationshipChoice("어머니");
                     requestId.current = crypto.randomUUID();
                     setInfo({
                       applicant_name: "김민지",
                       applicant_phone: "010-0000-0000",
                       target_name: "김가족",
                       target_phone: "010-0000-0000",
+                      target_relationship: "어머니",
                       preferred_date: koreaToday(),
                       preferred_time: TIME_SLOTS[0],
                     });
@@ -663,6 +667,82 @@ export default function ApplicationPage() {
                       />
                     </label>
                   ))}
+                </fieldset>
+
+                <fieldset
+                  disabled={busy}
+                  className="application-fieldset grid gap-5 sm:grid-cols-2"
+                >
+                  <legend className="mb-4 text-base font-semibold">
+                    신청인과 대상자의 관계
+                  </legend>
+                  <label className="space-y-2 text-base">
+                    <span>
+                      대상자는 신청인의 누구인가요?
+                      <RequiredMark />
+                    </span>
+                    <select
+                      id="target_relationship"
+                      required
+                      value={relationshipChoice}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setRelationshipChoice(value);
+                        changeInfo(
+                          "target_relationship",
+                          value === "other" ? "" : value,
+                          event.target,
+                        );
+                      }}
+                      className={INPUT}
+                    >
+                      <option value="" disabled>
+                        관계를 선택해 주세요.
+                      </option>
+                      {[
+                        "어머니",
+                        "아버지",
+                        "배우자",
+                        "형제자매",
+                        "조부모",
+                        "자녀",
+                        "친척",
+                        "지인",
+                      ].map((value) => (
+                        <option key={value} value={value}>
+                          {value}
+                        </option>
+                      ))}
+                      <option value="other">직접 입력</option>
+                    </select>
+                  </label>
+                  {relationshipChoice === "other" && (
+                    <label className="space-y-2 text-base">
+                      <span>
+                        관계 직접 입력
+                        <RequiredMark />
+                      </span>
+                      <input
+                        id="target_relationship_custom"
+                        required
+                        maxLength={80}
+                        value={info.target_relationship}
+                        onChange={(event) =>
+                          changeInfo(
+                            "target_relationship",
+                            event.target.value,
+                            event.target,
+                          )
+                        }
+                        placeholder="예: 이모, 사촌 형"
+                        className={INPUT}
+                      />
+                    </label>
+                  )}
+                  <p className="text-sm leading-6 text-slate-500 sm:col-span-2">
+                    예를 들어 어머니께 훈련 전화를 신청한다면 ‘어머니’를 선택해
+                    주세요.
+                  </p>
                 </fieldset>
 
                 <fieldset

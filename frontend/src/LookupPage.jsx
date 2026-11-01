@@ -301,6 +301,10 @@ export default function LookupPage() {
                 {[
                   ["신청인", application.applicant_name],
                   ["대상자", application.target_name],
+                  [
+                    "신청인과의 관계",
+                    application.target_relationship || "미입력",
+                  ],
                   ["희망 날짜", application.preferred_date],
                   ["희망 시간대", application.preferred_time_label],
                   ["시나리오", application.scenario_title],
