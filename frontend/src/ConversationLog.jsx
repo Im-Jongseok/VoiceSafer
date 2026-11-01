@@ -3,8 +3,10 @@ import {
   latestCallEvent,
   listSegments,
   listCallMessages,
+  getCallReport,
   subscribeRecords,
 } from "./database";
+import TrainingReport from "./TrainingReport";
 
 const MESSAGE_STATUS = {
   requesting: "발송 요청 중",
@@ -31,6 +33,7 @@ export default function ConversationLog({
 }) {
   const [rows, setRows] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [report, setReport] = useState(null);
   const [phase, setPhase] = useState("waiting");
   const [connection, setConnection] = useState("connecting");
   const [error, setError] = useState("");
@@ -64,14 +67,16 @@ export default function ConversationLog({
       const controller = new AbortController();
       request.current = controller;
       try {
-        const [latest, event, sms] = await Promise.all([
+        const [latest, event, sms, analysis] = await Promise.all([
           listSegments(callId, controller.signal),
           latestCallEvent(callId, controller.signal),
           listCallMessages(callId, controller.signal),
+          getCallReport(callId, controller.signal),
         ]);
         if (controller.signal.aborted) return;
         setPhase(event?.payload?.phase || "waiting");
         setMessages(sms);
+        setReport(analysis);
         const reset =
           resetRows.current ||
           (latest.length === 50 &&
@@ -87,7 +92,7 @@ export default function ConversationLog({
         );
         setError("");
         const tail = latest.at(-1),
-          token = `${tail ? `${tail.id}:${tail.revision}` : ""}:${sms.map((row) => `${row.id}:${row.status}`).join(",")}`;
+          token = `${tail ? `${tail.id}:${tail.revision}` : ""}:${sms.map((row) => `${row.id}:${row.status}`).join(",")}:${analysis?.revision || 0}`;
         if (!reset && !nearBottom.current && token !== lastMessage.current)
           setFresh(true);
         lastMessage.current = token;
@@ -108,6 +113,7 @@ export default function ConversationLog({
     lastMessage.current = "";
     setRows([]);
     setMessages([]);
+    setReport(null);
     setPhase("waiting");
     setOlder(false);
     setFresh(false);
@@ -145,7 +151,7 @@ export default function ConversationLog({
   useEffect(() => {
     if (nearBottom.current && expanded && scroll.current)
       scroll.current.scrollTop = scroll.current.scrollHeight;
-  }, [rows, messages, expanded]);
+  }, [rows, messages, report, expanded]);
   async function loadOlder() {
     if (paging || !rows.length) return;
     const current = generation.current,
@@ -293,10 +299,19 @@ export default function ConversationLog({
                     )}
                   </div>
                   <p>{row.text}</p>
+                  {report?.content?.findings
+                    ?.filter(
+                      (finding) =>
+                        finding.source_event_id === row.source_event_id,
+                    )
+                    .map((finding) => (
+                      <small key={finding.id}>{finding.title}</small>
+                    ))}
                 </li>
               ))}
             </ol>
           )}
+          {report?.status === "final" && <TrainingReport report={report} />}
         </div>
         {fresh && (
           <button
