@@ -290,6 +290,10 @@ function Workspace({ onLogout, sessionError }) {
                   <dd>{formatPhone(selected.target_phone)}</dd>
                 </div>
                 <div>
+                  <dt>신청인과의 관계</dt>
+                  <dd>{selected.target_relationship || "미입력"}</dd>
+                </div>
+                <div>
                   <dt>희망 날짜</dt>
                   <dd>{selected.preferred_date}</dd>
                 </div>

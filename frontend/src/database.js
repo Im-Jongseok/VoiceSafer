@@ -23,7 +23,7 @@ export const STATUS_LABELS = {
   "in-progress": "통화 중",
 };
 const RECEIPT_FIELDS =
-  "id,applicant_name,applicant_phone,target_name,target_phone,preferred_date,preferred_time,scenario_id,status,created_at,updated_at,is_demo,submission_complete,preview_version,preview_asset_id,preview_text,preview_model,confirmed_preview_version,preview_confirmed_at,scenarios(title),voice_assets(id,kind,status,bucket_id,object_path,duration_ms)";
+  "id,applicant_name,applicant_phone,target_name,target_phone,target_relationship,preferred_date,preferred_time,scenario_id,status,created_at,updated_at,is_demo,submission_complete,preview_version,preview_asset_id,preview_text,preview_model,confirmed_preview_version,preview_confirmed_at,scenarios(title),voice_assets(id,kind,status,bucket_id,object_path,duration_ms)";
 
 export function clientFor(role = "applicant") {
   if (!clients.has(role)) {
@@ -183,6 +183,7 @@ export async function saveApplication({
       p_applicant_phone: phone(info.applicant_phone),
       p_target_name: info.target_name.trim(),
       p_target_phone: phone(info.target_phone),
+      p_target_relationship: info.target_relationship.trim(),
       p_preferred_date: info.preferred_date,
       p_preferred_time: Object.keys(TIME_OPTIONS).find(
         (key) => TIME_OPTIONS[key] === info.preferred_time,
