@@ -112,6 +112,10 @@ export default function TrainingPreview({ application, onRefresh }) {
                   </p>
                 )
               )}
+              <p className="text-sm leading-7 text-slate-500">
+                실제 통화에서는 답변에 맞춰 시나리오 대사와 훈련 종료 안내를
+                등록한 목소리로 들려드립니다.
+              </p>
               {application.preview_text && (
                 <details className="text-sm leading-7 text-slate-600">
                   <summary className="cursor-pointer">훈련 대본 보기</summary>
