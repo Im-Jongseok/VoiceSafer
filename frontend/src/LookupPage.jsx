@@ -419,22 +419,6 @@ export default function LookupPage() {
               )}
             </section>
           )}
-          <div className="flex flex-wrap justify-center gap-4">
-            {!application && (
-              <a
-                className="application-submit inline-flex items-center bg-primary px-7 py-3 text-white"
-                href="/apply"
-              >
-                훈련 신청하기
-              </a>
-            )}
-            <a
-              className="demo-example-button inline-flex items-center"
-              href="/"
-            >
-              홈으로
-            </a>
-          </div>
         </section>
       </div>
       <div className="landing-footer">
