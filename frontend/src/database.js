@@ -316,7 +316,7 @@ export async function listSegments(callId, signal, before) {
   let query = clientFor("operator")
     .from("conversation_segments")
     .select(
-      "id,call_id,speaker,position,revision,text,is_final,start_ms,end_ms,created_at,updated_at",
+      "id,call_id,source_event_id,speaker,position,revision,text,is_final,start_ms,end_ms,created_at,updated_at",
     )
     .eq("call_id", callId)
     .order("position", { ascending: false })
@@ -341,6 +341,31 @@ export async function listCallMessages(callId, signal) {
       .limit(100)
       .abortSignal(signal),
     "문자 기록을 불러오지 못했습니다.",
+  );
+}
+export async function getCallReport(callId, signal) {
+  return checked(
+    await clientFor("operator")
+      .from("training_reports")
+      .select("call_id,revision,status,content,updated_at")
+      .eq("call_id", callId)
+      .maybeSingle()
+      .abortSignal(signal),
+    "훈련 분석을 불러오지 못했습니다.",
+  );
+}
+export async function listTrainingReports(applicationId, signal) {
+  await applicantSession();
+  return checked(
+    await clientFor()
+      .from("training_reports")
+      .select("call_id,revision,status,content,created_at,updated_at")
+      .eq("application_id", applicationId)
+      .eq("status", "final")
+      .order("created_at", { ascending: false })
+      .limit(10)
+      .abortSignal(signal),
+    "훈련 리포트를 불러오지 못했습니다.",
   );
 }
 export async function referenceAudio(application, role = "operator") {

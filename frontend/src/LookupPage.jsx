@@ -3,10 +3,12 @@ import PublicHeader from "./PublicHeader";
 import SiteFooter from "./SiteFooter";
 import ReferenceAudio from "./ReferenceAudio";
 import TrainingPreview from "./TrainingPreview";
+import TrainingReport from "./TrainingReport";
 import {
   cancelApplication,
   findApplicationsByPhone,
   getApplication,
+  listTrainingReports,
   STATUS_LABELS,
   subscribeRecords,
 } from "./database";
@@ -20,6 +22,7 @@ export default function LookupPage() {
   const cancelRequest = useRef(null);
   const [lookup, setLookup] = useState(() => window.location.hash.slice(1));
   const [application, setApplication] = useState(null);
+  const [reports, setReports] = useState([]);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const [connection, setConnection] = useState("connecting");
@@ -35,13 +38,19 @@ export default function LookupPage() {
       setPending(true);
       try {
         const saved = await getApplication(lookup, controller.signal);
+        const results = await listTrainingReports(
+          saved.database_id,
+          controller.signal,
+        );
         if (!controller.signal.aborted) {
           setApplication(saved);
+          setReports(results);
           if (!options.preserveError) setError("");
         }
       } catch (error) {
         if (!controller.signal.aborted) {
           setApplication(null);
+          setReports([]);
           setError(error.message);
         }
       } finally {
@@ -61,6 +70,7 @@ export default function LookupPage() {
       cancelRequest.current?.abort();
       setCanceling(false);
       setApplication(null);
+      setReports([]);
       setConfirmCancel(false);
       setPending(false);
       setError("");
@@ -95,6 +105,7 @@ export default function LookupPage() {
     }
     request.current?.abort();
     setApplication(null);
+    setReports([]);
     setError("");
     setConfirmCancel(false);
     window.history.pushState(null, "", `/lookup#${value}`);
@@ -321,6 +332,33 @@ export default function LookupPage() {
                   </div>
                 ))}
               </dl>
+              <section
+                id="training-report"
+                className="space-y-4"
+                aria-label="훈련 결과 안내"
+              >
+                {reports.length ? (
+                  reports.map((report) => (
+                    <div key={report.call_id} className="space-y-2">
+                      <p className="text-xs text-slate-400">
+                        {new Date(report.updated_at).toLocaleString("ko-KR", {
+                          timeZone: "Asia/Seoul",
+                        })}
+                      </p>
+                      <TrainingReport report={report} />
+                    </div>
+                  ))
+                ) : (
+                  <p
+                    role="status"
+                    className="rounded-2xl bg-primary-soft p-5 text-sm leading-7 text-slate-600"
+                  >
+                    {application.status === "completed"
+                      ? "통화가 종료되었습니다. 대화 기록을 분석하고 리포트를 준비합니다. 준비되면 이 화면에 자동으로 표시됩니다. 기록이 부족하면 판단 한계도 함께 안내합니다."
+                      : "훈련 종료 후 이 신청 조회 화면에서 위험 신호, 수신자의 대응과 근거 문장, 다음 훈련 안내를 확인할 수 있습니다."}
+                  </p>
+                )}
+              </section>
               <TrainingPreview
                 key={application.database_id}
                 application={application}
