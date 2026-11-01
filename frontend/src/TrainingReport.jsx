@@ -9,6 +9,8 @@ const KINDS = {
   safe_response: "안전한 대응",
   scenario_signal: "훈련 대본의 위험 신호",
 };
+const CORE_FEEDBACK =
+  "애매하면 먼저 전화를 끊고, 평소 저장해 둔 가족 번호로 직접 전화해 확인하세요.";
 
 export default function TrainingReport({ report }) {
   const data = report?.content;
@@ -85,13 +87,19 @@ export default function TrainingReport({ report }) {
           </details>
         ))}
       </div>
+      <div className="rounded-xl bg-primary-soft p-4 text-primary">
+        <h4 className="text-xs font-medium">꼭 기억하세요</h4>
+        <p className="mt-2 text-sm font-semibold leading-7">{CORE_FEEDBACK}</p>
+      </div>
       <div className="space-y-2 border-t border-slate-100 pt-4">
         <h4 className="text-sm font-medium">다음 훈련에서 연습할 점</h4>
-        {(data.recommendations || []).map((text) => (
-          <p key={text} className="text-sm leading-7 text-slate-600">
-            {text}
-          </p>
-        ))}
+        {(data.recommendations || [])
+          .filter((text) => text !== CORE_FEEDBACK)
+          .map((text) => (
+            <p key={text} className="text-sm leading-7 text-slate-600">
+              {text}
+            </p>
+          ))}
       </div>
       <p className="text-xs leading-6 text-slate-500">
         문자 발송 완료 {data.messages?.sent || 0}건 · 발송 실패{" "}

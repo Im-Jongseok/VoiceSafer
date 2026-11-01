@@ -3,7 +3,15 @@
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/apply/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/lookup",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/control/:path*",
       "destination": "/index.html"
     }
   ]
