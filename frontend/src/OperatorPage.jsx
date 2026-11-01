@@ -336,8 +336,8 @@ function Workspace({ onLogout, sessionError }) {
               </section>
               <p className="operator-pending-note">
                 희망 일정은 확정 전입니다. 훈련 음성은 PC 관제에서 준비하며,
-                신청인이 조회 화면에서 최종 확정합니다. 실제 전화 발신은 별도
-                연결 단계입니다.
+                신청인이 조회 화면에서 최종 확정하면 PC 관제의 전화 버튼으로
+                훈련 전화를 진행할 수 있습니다.
               </p>
             </div>
             <div className="operator-call-selector">
