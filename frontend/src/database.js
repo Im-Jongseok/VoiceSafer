@@ -296,6 +296,21 @@ export async function listCalls(applicationId, signal) {
     "통화 기록을 불러오지 못했습니다.",
   );
 }
+export async function latestCallEvent(callId, signal) {
+  return (
+    checked(
+      await clientFor("operator")
+        .from("call_events")
+        .select("id,event_type,payload")
+        .eq("call_id", callId)
+        .order("id", { ascending: false })
+        .limit(1)
+        .abortSignal(signal),
+      "통화 반응 상태를 불러오지 못했습니다.",
+    )[0] || null
+  );
+}
+
 export async function listSegments(callId, signal, before) {
   let query = clientFor("operator")
     .from("conversation_segments")

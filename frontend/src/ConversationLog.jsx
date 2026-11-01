@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { listSegments, subscribeRecords } from "./database";
+import { latestCallEvent, listSegments, subscribeRecords } from "./database";
 
 function mergeSegments(current, incoming) {
   const rows = new Map(current.map((row) => [row.id, row]));
@@ -17,6 +17,7 @@ export default function ConversationLog({
   onCallChange,
 }) {
   const [rows, setRows] = useState([]);
+  const [phase, setPhase] = useState("waiting");
   const [connection, setConnection] = useState("connecting");
   const [error, setError] = useState("");
   const [older, setOlder] = useState(false);
@@ -49,8 +50,12 @@ export default function ConversationLog({
       const controller = new AbortController();
       request.current = controller;
       try {
-        const latest = await listSegments(callId, controller.signal);
+        const [latest, event] = await Promise.all([
+          listSegments(callId, controller.signal),
+          latestCallEvent(callId, controller.signal),
+        ]);
         if (controller.signal.aborted) return;
+        setPhase(event?.payload?.phase || "waiting");
         const reset =
           resetRows.current ||
           (latest.length === 50 &&
@@ -86,6 +91,7 @@ export default function ConversationLog({
     resetRows.current = true;
     lastMessage.current = "";
     setRows([]);
+    setPhase("waiting");
     setOlder(false);
     setFresh(false);
     setError("");
@@ -228,7 +234,9 @@ export default function ConversationLog({
                 >
                   <div>
                     <span>
-                      {row.speaker === "caller" ? "발신자" : "수신자"}
+                      {row.speaker === "caller"
+                        ? "훈련 음성 · 재생 대본"
+                        : "수신자 · 음성 인식"}
                     </span>
                     <time>
                       {row.start_ms == null
@@ -240,7 +248,15 @@ export default function ConversationLog({
                           })
                         : `${String(Math.floor(row.start_ms / 60000)).padStart(2, "0")}:${String(Math.floor(row.start_ms / 1000) % 60).padStart(2, "0")}`}
                     </time>
-                    {!row.is_final && <small>전사 중</small>}
+                    {!row.is_final && (
+                      <small>
+                        {phase === "ended"
+                          ? "미확정"
+                          : row.speaker === "caller"
+                            ? "전송 중"
+                            : "인식 중"}
+                      </small>
+                    )}
                   </div>
                   <p>{row.text}</p>
                 </li>
@@ -264,7 +280,7 @@ export default function ConversationLog({
         )}
         <p role="status" className="operator-conversation-note">
           {callId
-            ? "확정 전 문장은 음성 인식 결과에 따라 바뀔 수 있습니다."
+            ? `${{ connected: "실시간 연결", listening: "듣는 중", recognizing: "음성 인식 중", responding: "응답 준비 중", playing: "훈련 음성 재생 중", ended: "통화 종료", error: "연결 확인 필요" }[phase] || "통화 대기"} · 확정 전 문장은 바뀔 수 있습니다.`
             : "통화가 등록되면 대화 기록을 확인할 수 있습니다."}
         </p>
       </div>
