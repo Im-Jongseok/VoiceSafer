@@ -1,5 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { latestCallEvent, listSegments, subscribeRecords } from "./database";
+import {
+  latestCallEvent,
+  listSegments,
+  listCallMessages,
+  subscribeRecords,
+} from "./database";
+
+const MESSAGE_STATUS = {
+  requesting: "발송 요청 중",
+  queued: "발송 접수",
+  sent: "발송 완료",
+  failed: "발송 실패",
+  uncertain: "발송 확인 필요",
+};
 
 function mergeSegments(current, incoming) {
   const rows = new Map(current.map((row) => [row.id, row]));
@@ -17,6 +30,7 @@ export default function ConversationLog({
   onCallChange,
 }) {
   const [rows, setRows] = useState([]);
+  const [messages, setMessages] = useState([]);
   const [phase, setPhase] = useState("waiting");
   const [connection, setConnection] = useState("connecting");
   const [error, setError] = useState("");
@@ -50,12 +64,14 @@ export default function ConversationLog({
       const controller = new AbortController();
       request.current = controller;
       try {
-        const [latest, event] = await Promise.all([
+        const [latest, event, sms] = await Promise.all([
           listSegments(callId, controller.signal),
           latestCallEvent(callId, controller.signal),
+          listCallMessages(callId, controller.signal),
         ]);
         if (controller.signal.aborted) return;
         setPhase(event?.payload?.phase || "waiting");
+        setMessages(sms);
         const reset =
           resetRows.current ||
           (latest.length === 50 &&
@@ -71,7 +87,7 @@ export default function ConversationLog({
         );
         setError("");
         const tail = latest.at(-1),
-          token = tail ? `${tail.id}:${tail.revision}` : "";
+          token = `${tail ? `${tail.id}:${tail.revision}` : ""}:${sms.map((row) => `${row.id}:${row.status}`).join(",")}`;
         if (!reset && !nearBottom.current && token !== lastMessage.current)
           setFresh(true);
         lastMessage.current = token;
@@ -91,6 +107,7 @@ export default function ConversationLog({
     resetRows.current = true;
     lastMessage.current = "";
     setRows([]);
+    setMessages([]);
     setPhase("waiting");
     setOlder(false);
     setFresh(false);
@@ -128,7 +145,7 @@ export default function ConversationLog({
   useEffect(() => {
     if (nearBottom.current && expanded && scroll.current)
       scroll.current.scrollTop = scroll.current.scrollHeight;
-  }, [rows, expanded]);
+  }, [rows, messages, expanded]);
   async function loadOlder() {
     if (paging || !rows.length) return;
     const current = generation.current,
@@ -156,6 +173,16 @@ export default function ConversationLog({
       if (current === generation.current) setPaging(false);
     }
   }
+  const entries = [
+    ...rows,
+    ...messages.map((row) => ({
+      ...row,
+      speaker: "caller",
+      channel: "sms",
+      text: row.body,
+      is_final: true,
+    })),
+  ].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
   return (
     <section
       className={`operator-conversation ${expanded ? "is-expanded" : ""}`}
@@ -168,7 +195,9 @@ export default function ConversationLog({
         aria-expanded={expanded}
         aria-controls="operator-conversation-body"
       >
-        <span>대화 기록 {rows.length > 0 && <small>{rows.length}</small>}</span>
+        <span>
+          대화 기록 {entries.length > 0 && <small>{entries.length}</small>}
+        </span>
         <span className="flex items-center gap-3">
           {callId && (
             <span className="live-indicator" data-state={connection}>
@@ -200,7 +229,7 @@ export default function ConversationLog({
         )}
         <div
           ref={scroll}
-          className={`operator-messages ${rows.length ? "" : "is-empty"}`}
+          className={`operator-messages ${entries.length ? "" : "is-empty"}`}
           onScroll={(event) => {
             const e = event.currentTarget;
             nearBottom.current =
@@ -218,7 +247,7 @@ export default function ConversationLog({
               {paging ? "불러오는 중…" : "이전 대화 보기"}
             </button>
           )}
-          {!rows.length ? (
+          {!entries.length ? (
             <p className="operator-chat-empty">
               아직 수신한 대화 기록이 없습니다.
               <br />
@@ -226,7 +255,7 @@ export default function ConversationLog({
             </p>
           ) : (
             <ol aria-label="통화 대화 내용" className="operator-message-list">
-              {rows.map((row) => (
+              {entries.map((row) => (
                 <li
                   key={row.id}
                   data-speaker={row.speaker}
@@ -234,10 +263,15 @@ export default function ConversationLog({
                 >
                   <div>
                     <span>
-                      {row.speaker === "caller"
-                        ? "훈련 음성 · 재생 대본"
-                        : "수신자 · 음성 인식"}
+                      {row.channel === "sms"
+                        ? "발신 문자"
+                        : row.speaker === "caller"
+                          ? "훈련 음성 · 재생 대본"
+                          : "수신자 · 음성 인식"}
                     </span>
+                    {row.channel === "sms" && (
+                      <small>{MESSAGE_STATUS[row.status]}</small>
+                    )}
                     <time>
                       {row.start_ms == null
                         ? new Date(row.created_at).toLocaleTimeString("ko-KR", {
