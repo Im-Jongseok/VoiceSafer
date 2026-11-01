@@ -16,6 +16,9 @@ export default function TrainingReport({ report }) {
   const data = report?.content;
   if (!data) return null;
   const findings = data.findings || [];
+  const recommendations = (data.recommendations || []).filter(
+    (text) => text !== CORE_FEEDBACK,
+  );
   return (
     <section
       className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 sm:p-7"
@@ -91,16 +94,16 @@ export default function TrainingReport({ report }) {
         <h4 className="text-xs font-medium">꼭 기억하세요</h4>
         <p className="mt-2 text-sm font-semibold leading-7">{CORE_FEEDBACK}</p>
       </div>
-      <div className="space-y-2 border-t border-slate-100 pt-4">
-        <h4 className="text-sm font-medium">다음 훈련에서 연습할 점</h4>
-        {(data.recommendations || [])
-          .filter((text) => text !== CORE_FEEDBACK)
-          .map((text) => (
+      {recommendations.length > 0 && (
+        <div className="space-y-2 border-t border-slate-100 pt-4">
+          <h4 className="text-sm font-medium">다음 훈련에서 연습할 점</h4>
+          {recommendations.map((text) => (
             <p key={text} className="text-sm leading-7 text-slate-600">
               {text}
             </p>
           ))}
-      </div>
+        </div>
+      )}
       <p className="text-xs leading-6 text-slate-500">
         문자 발송 완료 {data.messages?.sent || 0}건 · 발송 실패{" "}
         {data.messages?.failed || 0}건
