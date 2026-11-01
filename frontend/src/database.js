@@ -23,7 +23,7 @@ export const STATUS_LABELS = {
   "in-progress": "통화 중",
 };
 const RECEIPT_FIELDS =
-  "id,applicant_name,applicant_phone,target_name,target_phone,preferred_date,preferred_time,scenario_id,status,created_at,updated_at,is_demo,submission_complete,scenarios(title),voice_assets(id,kind,status,bucket_id,object_path,duration_ms)";
+  "id,applicant_name,applicant_phone,target_name,target_phone,preferred_date,preferred_time,scenario_id,status,created_at,updated_at,is_demo,submission_complete,preview_version,preview_asset_id,preview_text,preview_model,confirmed_preview_version,preview_confirmed_at,scenarios(title),voice_assets(id,kind,status,bucket_id,object_path,duration_ms)";
 
 export function clientFor(role = "applicant") {
   if (!clients.has(role)) {
@@ -389,4 +389,38 @@ export function subscribeRecords(role, topic, refresh, onStatus) {
     document.removeEventListener("visibilitychange", schedule);
     if (channel) client.removeChannel(channel);
   };
+}
+
+export async function trainingPreviewAudio(application) {
+  const asset = application.voice_assets?.find(
+    (item) =>
+      item.id === application.preview_asset_id &&
+      item.kind === "preview" &&
+      item.status === "ready" &&
+      item.bucket_id === "training-audio",
+  );
+  if (!asset || !application.preview_version)
+    throw new Error(
+      "준비된 훈련 음성을 찾지 못했습니다. 새로고침 후 확인해 주세요.",
+    );
+  return checked(
+    await clientFor()
+      .storage.from(asset.bucket_id)
+      .createSignedUrl(asset.object_path, 300),
+    "훈련 음성을 불러오지 못했습니다. 다시 시도해 주세요.",
+  ).signedUrl;
+}
+export async function confirmTrainingPreview(application) {
+  await applicantSession();
+  const result = await clientFor().rpc("confirm_training_preview", {
+    p_application_id: application.database_id,
+    p_version: application.preview_version,
+    p_asset_id: application.preview_asset_id,
+  });
+  if (result.error)
+    throw new Error(
+      result.error.code === "55000"
+        ? "시나리오나 음성이 변경됐거나 신청이 취소되었습니다. 최신 내용을 다시 확인해 주세요."
+        : "최종 확정을 저장하지 못했습니다. 다시 시도해 주세요.",
+    );
 }

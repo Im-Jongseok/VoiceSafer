@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import PublicHeader from "./PublicHeader";
 import SiteFooter from "./SiteFooter";
 import ReferenceAudio from "./ReferenceAudio";
+import TrainingPreview from "./TrainingPreview";
 import {
   cancelApplication,
   findApplicationsByPhone,
@@ -316,12 +317,17 @@ export default function LookupPage() {
                   </div>
                 ))}
               </dl>
+              <TrainingPreview
+                key={application.database_id}
+                application={application}
+                onRefresh={load}
+              />
               <section className="space-y-4 rounded-2xl border border-slate-200 p-5">
                 <h3 className="font-medium">등록한 목소리 확인</h3>
                 <ReferenceAudio application={application} role="applicant" />
                 <p className="text-sm leading-7 text-slate-500">
-                  등록 음성을 확인하는 단계입니다. 훈련 음성 생성과 실제 전화는
-                  아직 연결하지 않았습니다.
+                  신청 시 등록한 원본 목소리입니다. 위의 예상 훈련 음성을
+                  확인하고 최종 확정해 주세요.
                 </p>
               </section>
               <p
