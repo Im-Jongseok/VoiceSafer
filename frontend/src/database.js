@@ -330,6 +330,18 @@ export async function listSegments(callId, signal, before) {
     "대화 기록을 불러오지 못했습니다.",
   ).reverse();
 }
+export async function listCallMessages(callId, signal) {
+  return checked(
+    await clientFor("operator")
+      .from("conversation_messages")
+      .select("id,body,status,created_at,updated_at")
+      .eq("call_id", callId)
+      .order("created_at", { ascending: true })
+      .limit(100)
+      .abortSignal(signal),
+    "문자 기록을 불러오지 못했습니다.",
+  );
+}
 export async function referenceAudio(application, role = "operator") {
   const asset = application.voice_assets
     ?.filter((a) => a.kind === "reference")
