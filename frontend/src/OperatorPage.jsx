@@ -271,6 +271,15 @@ function Workspace({ onLogout, sessionError }) {
                 <Status value={selected.status} />
               </div>
               <ApplicationNumber id={selected.id} compact />
+              {selected.preview_asset_id && (
+                <p className="text-sm text-primary">
+                  {selected.preview_confirmed_at &&
+                  selected.confirmed_preview_version ===
+                    selected.preview_version
+                    ? "신청인 최종 확정 완료"
+                    : "신청인 음성 확인·최종 확정 대기"}
+                </p>
+              )}
               <dl className="operator-contact-grid">
                 <div>
                   <dt>신청인 연락처</dt>
@@ -326,8 +335,9 @@ function Workspace({ onLogout, sessionError }) {
                 <ReferenceAudio application={selected} />
               </section>
               <p className="operator-pending-note">
-                희망 일정은 확정 전입니다. 음성 생성·전화 발신은 아직 연결하지
-                않았습니다.
+                희망 일정은 확정 전입니다. 훈련 음성은 PC 관제에서 준비하며,
+                신청인이 조회 화면에서 최종 확정합니다. 실제 전화 발신은 별도
+                연결 단계입니다.
               </p>
             </div>
             <div className="operator-call-selector">
