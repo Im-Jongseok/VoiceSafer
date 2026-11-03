@@ -1,0 +1,31 @@
+{
+  "name": "@voicesafer/operator",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "electron electron/main.cjs",
+    "package": "node electron/build.mjs"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.3",
+    "@vitejs/plugin-react": "6.1.2",
+    "tailwindcss": "4.3.3",
+    "vite": "8.3.5",
+    "@electron/packager": "20.3.0",
+    "electron": "45.2.1"
+  },
+  "productName": "VoiceSafer",
+  "author": "Im-Jongseok",
+  "description": "보이스피싱 모의 훈련 운영자 관제 앱",
+  "overrides": {
+    "glob": "14.0.3",
+    "minimatch": "11.0.3"
+  }
+}
