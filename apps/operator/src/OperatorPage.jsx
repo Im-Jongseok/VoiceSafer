@@ -50,6 +50,8 @@ function Workspace({
   const [selectedId, setSelectedId] = useState("");
   const [providers, setProviders] = useState([]);
   const [engine, setEngine] = useState("qwen");
+  const [responseMode, setResponseMode] = useState("scenario");
+  const [dialogueConfigured, setDialogueConfigured] = useState(false);
   const [callingConfigured, setCallingConfigured] = useState(false);
   const [scenarios, setScenarios] = useState([]);
   const [scenarioId, setScenarioId] = useState("");
@@ -137,6 +139,7 @@ function Workspace({
       );
       setProviders(config.providers);
       setCallingConfigured(config.calling_configured);
+      setDialogueConfigured(Boolean(config.dialogue_configured));
       setScenarios(source.scenarios);
     } catch (error) {
       fail(error);
@@ -167,6 +170,7 @@ function Workspace({
           setSource(data.source);
           setProviders(config.providers);
           setCallingConfigured(config.calling_configured);
+      setDialogueConfigured(Boolean(config.dialogue_configured));
           setSelectedId((current) =>
             data.applications.some((item) => item.id === current)
               ? current
@@ -229,6 +233,7 @@ function Workspace({
         "",
     );
     setEngine(selected?.plan?.engine || "qwen");
+    setResponseMode(selected?.plan?.response_mode || "scenario");
   }, [
     selectedId,
     selected?.plan?.version,
@@ -252,7 +257,7 @@ function Workspace({
 
   useEffect(() => () => preparation.current?.abort(), []);
 
-  async function chooseScenario(id, nextEngine = engine) {
+  async function chooseScenario(id, nextEngine = engine, nextMode = responseMode) {
     if (busy || preparation.current || !selected) return;
     const controller = new AbortController();
     preparation.current = controller;
@@ -264,7 +269,7 @@ function Workspace({
           method: "POST",
           signal: controller.signal,
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ scenario_id: id, engine: nextEngine }),
+          body: JSON.stringify({ scenario_id: id, engine: nextEngine, response_mode: nextMode }),
         }),
       );
       const next = await response.json();
@@ -432,6 +437,24 @@ function Workspace({
                     >
                       음성 모델
                     </label>
+                    <label className="block text-sm">
+                      응답 방식
+                      <select aria-label="응답 방식" value={responseMode} disabled={busy}
+                        className="ml-3 rounded border border-slate-300 bg-white px-3 py-2 text-sm"
+                        onChange={(event) => {
+                          const mode = event.target.value;
+                          if (scenarioId) chooseScenario(scenarioId, engine, mode);
+                          else setResponseMode(mode);
+                        }}>
+                        <option value="scenario">준비된 시나리오</option>
+                        <option value="hybrid" disabled={!dialogueConfigured}>대화형 · LLM</option>
+                      </select>
+                    </label>
+                    <p className="text-xs text-slate-500">
+                      {responseMode === "hybrid"
+                        ? "답변에 맞춰 새 문장을 생성합니다. 신청인의 새 음성 확인·최종 확정이 필요합니다."
+                        : !dialogueConfigured ? "대화형 응답은 PC 설정에 LLM 키와 모델을 등록하면 사용할 수 있습니다." : "준비된 대사를 사용합니다."}
+                    </p>
                     <div className="control-model-row">
                       <div className="control-model-select">
                         <select

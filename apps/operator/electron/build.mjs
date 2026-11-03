@@ -65,6 +65,8 @@ try {
     "--add-data",
     `${path.join(ui, "dist")}:frontend/dist`,
     "--add-data",
+    `${path.resolve(root, "../../packages/contracts/dialogue-policy.json")}:.`,
+    "--add-data",
     `${path.join(root, "scenarios")}:scenarios`,
     path.join(directory, "server.py"),
   ]);

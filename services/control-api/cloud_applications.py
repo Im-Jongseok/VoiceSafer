@@ -13,6 +13,8 @@ import httpx
 from dotenv import dotenv_values
 from fastapi import HTTPException
 
+import dialogue
+
 FIELDS = "id,applicant_name,applicant_phone,target_name,target_phone,target_relationship,preferred_date,preferred_time,scenario_id,status,created_at,updated_at,is_demo,submission_complete,preview_version,preview_asset_id,preview_text,preview_model,confirmed_preview_version,preview_confirmed_at,scenarios(title),voice_assets(id,kind,status,bucket_id,object_path),application_consents(*),training_calls(id,provider_call_id,status,created_at)"
 _LOCK = threading.RLock()
 _AUTH = {}
@@ -225,7 +227,7 @@ def set_plan(row, plan):
             "p_application_id": row["id"],
             "p_version": str(uuid.UUID(plan["version"])),
             "p_scenario_id": scenario,
-            "p_text": plan["text"],
+            "p_text": dialogue.preview_text(plan),
             "p_model": plan["engine"],
         },
     )

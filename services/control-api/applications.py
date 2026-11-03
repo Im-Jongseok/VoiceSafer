@@ -516,6 +516,8 @@ def public_plan(plan):
         key: plan.get(key)
         for key in (
             "selection",
+            "response_mode",
+            "response_policy",
             "scenario_id",
             "scenario_title",
             "engine",

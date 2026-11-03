@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import dialoguePolicy from "../../../packages/contracts/dialogue-policy.json";
 import { trainingPreviewAudio, confirmTrainingPreview } from "./database";
 
 export default function TrainingPreview({ application, onRefresh }) {
+  const hybrid = application.preview_text?.startsWith(dialoguePolicy.marker);
   const [src, setSrc] = useState(""),
     [error, setError] = useState(""),
     [listened, setListened] = useState(""),
@@ -116,6 +118,9 @@ export default function TrainingPreview({ application, onRefresh }) {
                 실제 통화에서는 답변에 맞춰 시나리오 대사와 훈련 종료 안내를
                 등록한 목소리로 들려드립니다.
               </p>
+              {hybrid && <p className="rounded-xl bg-primary-soft p-4 text-sm leading-7 text-primary">
+                {application.preview_text.split("\n\n")[0].replace(dialoguePolicy.marker, "").trim()}
+              </p>}
               {application.preview_text && (
                 <details className="text-sm leading-7 text-slate-600">
                   <summary className="cursor-pointer">훈련 대본 보기</summary>
@@ -146,8 +151,9 @@ export default function TrainingPreview({ application, onRefresh }) {
                       disabled={pending || listened !== `${version}:${asset}`}
                       className="mt-1.5 accent-primary"
                     />
-                    예상 음성과 시나리오를 확인했으며, 이 내용으로 모의훈련을
-                    진행하는 데 동의합니다.
+                    {hybrid
+                      ? "예상 음성·시나리오와 위 대화형 응답·텍스트 전송 안내를 확인하고 이 범위의 모의훈련에 동의합니다."
+                      : "예상 음성과 시나리오를 확인했으며, 이 내용으로 모의훈련을 진행하는 데 동의합니다."}
                   </label>
                   <button
                     type="button"

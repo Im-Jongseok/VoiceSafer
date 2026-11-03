@@ -2,143 +2,21 @@
 
 import asyncio
 import audioop
-import hashlib
 import io
-import os
 import re
-import threading
 import time
 import uuid
 import wave
 from collections import deque
-from dataclasses import dataclass
-from pathlib import Path
 
-import httpx
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException
 
 import applications
 import conversations
+import dialogue
 import training_messages
+from speech import load_stt, response_path, response_wave, telephone_audio, transcribe
 from training_reports import SAFETY_ADVICE
-
-_MODEL = None
-_MODEL_LOCK = threading.Lock()
-
-
-def load_stt():
-    global _MODEL
-    with _MODEL_LOCK:
-        if _MODEL is None:
-            from faster_whisper import WhisperModel
-            from faster_whisper.vad import get_vad_model
-
-            root = Path(os.getenv("APP_CONFIG_DIR", Path(__file__).parent)) / "models"
-            model = WhisperModel(
-                "base",
-                device="cpu",
-                compute_type="int8",
-                cpu_threads=4,
-                download_root=str(root),
-                local_files_only=True,
-            )
-            get_vad_model()
-            _MODEL = model
-    return _MODEL
-
-
-@dataclass(frozen=True)
-class Recognition:
-    text: str
-    reliable: bool
-
-
-def transcribe(pcm, final=False):
-    import numpy as np
-
-    model = load_stt()
-    # Telephone audio is decoded at 8kHz; Whisper consumes a real resampled 16kHz signal.
-    pcm, _ = audioop.ratecv(pcm, 2, 1, 8000, 16000, None)
-    audio = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768
-    with _MODEL_LOCK:
-        segments, _ = model.transcribe(
-            audio,
-            language="ko",
-            beam_size=5 if final else 1,
-            temperature=0,
-            condition_on_previous_text=False,
-            vad_filter=True,
-        )
-        segments = [s for s in segments if s.text.strip() and s.no_speech_prob < 0.6]
-        text = " ".join(s.text.strip() for s in segments).strip()
-        # Model scores are a rejection heuristic, not calibrated confidence.
-        reliable = bool(text) and all(
-            s.avg_logprob >= -1.0 and s.compression_ratio <= 2.4 for s in segments
-        )
-        return Recognition(text, reliable)
-
-
-def telephone_audio(content):
-    with wave.open(io.BytesIO(content), "rb") as wav:
-        if wav.getnchannels() != 1 or wav.getsampwidth() != 2:
-            raise HTTPException(422, "훈련 음성은 모노 PCM16 WAV여야 합니다.")
-        pcm = wav.readframes(wav.getnframes())
-        pcm, _ = audioop.ratecv(pcm, 2, 1, wav.getframerate(), 8000, None)
-    return audioop.lin2ulaw(pcm, 2)
-
-
-def response_path(context, text):
-    key = hashlib.sha256(
-        (context["plan"]["version"] + context["plan"]["engine"] + text).encode()
-    ).hexdigest()[:24]
-    folder = applications.data_directory() / context["application_id"]
-    folder.mkdir(exist_ok=True, mode=0o700)
-    return folder / ("response-" + key + ".wav")
-
-
-async def response_wave(context, text):
-    import main
-
-    path = response_path(context, text)
-    if path.is_file():
-        content = path.read_bytes()
-        telephone_audio(content)
-        return content
-    engine = context["plan"]["engine"]
-    for attempt in range(2):
-        voice = applications.voice_id(context["application_id"], engine)
-        if not voice:
-            reference = await asyncio.to_thread(
-                applications.audio_path, context["application_id"]
-            )
-            registered = await main.register(
-                context["name"],
-                True,
-                UploadFile(
-                    filename="reference.wav", file=io.BytesIO(reference.read_bytes())
-                ),
-                engine,
-            )
-            if registered.requires_verification:
-                raise HTTPException(409, "목소리 제공자의 추가 확인이 필요합니다.")
-            voice = registered.voice_id
-            applications.save_voice(context["application_id"], engine, voice)
-        try:
-            result = await main.speech(
-                main.Speech(engine=engine, voice_id=voice, text=text)
-            )
-            telephone_audio(result.body)
-            with os.fdopen(
-                os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "wb"
-            ) as f:
-                f.write(result.body)
-            return result.body
-        except httpx.HTTPStatusError as error:
-            if error.response.status_code != 404 or attempt:
-                raise
-            applications.save_voice(context["application_id"], engine, None)
-    raise HTTPException(503, "훈련 목소리를 준비하지 못했습니다.")
-
 
 STOP = "모의훈련을 종료합니다. " + SAFETY_ADVICE
 SUCCESS = (
@@ -226,6 +104,9 @@ class ScenarioSession:
         self.recognition_failures = 0
         self.opening = True
         self.recognizing = False
+        self.generation = 0
+        self.pending = set()
+        self.history = []
 
     async def prewarm(self):
         pass
@@ -255,19 +136,32 @@ class ScenarioSession:
         if self.call:
             conversations.event(self.call.call_id, kind, phase, **details)
 
+    def current(self, generation):
+        return not self.closed and generation == self.generation
+
     async def interrupt(self):
-        if self.reply and not self.reply.done():
+        self.generation += 1
+        task = self.reply
+        if task and not task.done():
             was_playing = self.playing
-            self.reply.cancel()
-            await asyncio.gather(self.reply, return_exceptions=True)
+            source = self.reply_source
+            # Clear the phone buffer before cancellation cleanup or model work.
             await self.call.clear_audio()
-            if was_playing:
-                self.event(
-                    "interrupted",
-                    "listening",
-                    reason="callee_started",
-                    source_event_id=self.reply_source,
-                )
+            task.cancel()
+            self.pending.add(task)
+
+            def retired(done):
+                self.pending.discard(done)
+                if not done.cancelled():
+                    done.exception()
+
+            task.add_done_callback(retired)
+            self.event(
+                "interrupted" if was_playing else "status",
+                "listening",
+                reason="callee_started" if was_playing else "response_cancelled",
+                source_event_id=source,
+            )
 
     async def feed_audio(self, audio, timestamp):
         if self.closed or self.ending or not self.call:
@@ -366,9 +260,10 @@ class ScenarioSession:
                     # A newer utterance supersedes a response to an earlier one.
                     if self.utterance or not self.queue.empty():
                         continue
-                    text, finish, index, reason = self.choose(result.text)
-                    self.event("status", "responding", reason=reason)
-                    self.reply = asyncio.create_task(self.say(text, finish, index))
+                    self.history.append({"role": "user", "text": result.text})
+                    self.reply = asyncio.create_task(
+                        self.respond(result.text, source, self.generation)
+                    )
         except asyncio.CancelledError:
             pass
         except Exception:
@@ -379,42 +274,95 @@ class ScenarioSession:
 
     def choose(self, text):
         self.turns += 1
-        compact = re.sub(r"\s+", "", text)
-        if any(w in compact for w in ("그만", "중지", "종료", "끊을게", "끊어")):
-            return STOP, True, None, "stop_requested"
-        if any(
-            w in compact
-            for w in ("확인", "다시전화", "원래번호", "보이스피싱", "사기", "다시걸")
-        ):
-            return SUCCESS, True, None, "verify_independently"
-        if re.search(r"\d{6,}", compact) or any(
-            w in compact
-            for w in (
-                "카드번호",
-                "인증번호",
-                "비밀번호",
-                "송금할",
-                "입금할",
-                "결제할",
-                "보내줄게",
-            )
-        ):
-            return SENSITIVE, True, None, "sensitive_action"
+        context = " ".join(
+            m["text"] for m in self.history[-4:] if m["role"] == "assistant"
+        )
+        result = dialogue.assess(text, context)
+        endings = {
+            "stop": (STOP, "stop_requested"),
+            "refuse": (STOP, "request_refused"),
+            "verify": (SUCCESS, "verify_independently"),
+            "risk": (SENSITIVE, "sensitive_action"),
+        }
+        if result.intent in endings:
+            answer, reason = endings[result.intent]
+            return answer, True, None, reason
         if self.index >= len(self.context["lines"]) or self.turns >= 8:
             return FINISH, True, None, "scenario_finished"
-        if any(w in compact for w in ("다시말", "못들었", "뭐라고")):
+        if result.intent == "repeat":
             index = max(0, self.index - 1)
-            return self.context["lines"][index], False, index, "repeat_scenario_line"
-        index = (
-            1
-            if len(self.context["lines"]) > 1
-            and self.index <= 2
-            and any(w in compact for w in ("누구", "무슨번호", "다른번호"))
-            else self.index
+            return self.context["lines"][index], False, None, "repeat_scenario_line"
+        return (
+            self.context["lines"][self.index],
+            False,
+            self.index,
+            "next_scenario_line",
         )
-        return self.context["lines"][index], False, index, "next_scenario_line"
 
-    async def say(self, text, finish=False, index=None):
+    async def respond(self, text, utterance_id, generation):
+        started = time.monotonic()
+        answer, finish, index, reason = self.choose(text)
+        method = "rules"
+        if (
+            not finish
+            and reason == "next_scenario_line"
+            and dialogue.approved_mode(self.context["plan"])
+            and dialogue.configured()
+            and dialogue.runtime_matches(self.context["plan"])
+        ):
+            try:
+                async with asyncio.timeout(5):
+                    decision = await dialogue.respond(
+                        self.context, self.history, text, answer
+                    )
+                if not self.current(generation):
+                    return
+                method = "llm"
+                if decision.intent in {"stop", "refuse", "verify", "risk"}:
+                    answer = {
+                        "stop": STOP,
+                        "refuse": STOP,
+                        "verify": SUCCESS,
+                        "risk": SENSITIVE,
+                    }[decision.intent]
+                    finish, index, reason = True, None, decision.intent
+                elif decision.intent == "repeat":
+                    answer, index, reason = (
+                        self.context["lines"][max(0, self.index - 1)],
+                        None,
+                        "repeat_scenario_line",
+                    )
+                elif decision.intent == "unrelated":
+                    index, reason = None, "return_to_scenario"
+                else:
+                    answer, reason = decision.reply, "contextual_response"
+                    if decision.intent == "question":
+                        index = None
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                if not self.current(generation):
+                    return
+                self.event("status", "responding", reason="dialogue_fallback")
+                method = "fallback"
+        if not self.current(generation):
+            return
+        self.event(
+            "status",
+            "responding",
+            reason=reason,
+            action="decision",
+            method=method,
+            source_event_id=utterance_id,
+            generation=generation,
+            decision_ms=round((time.monotonic() - started) * 1000),
+        )
+        await self.say(answer, finish, index, generation=generation)
+
+    async def say(self, text, finish=False, index=None, *, generation=None):
+        generation = self.generation if generation is None else generation
+        if not self.current(generation):
+            return False
         source = uuid.uuid4().hex
         self.reply_source = source
         start = round((time.monotonic() - self.started_at) * 1000)
@@ -425,12 +373,31 @@ class ScenarioSession:
             self.event("status", "responding")
             audio = self.context.get("audio_by_text", {}).get(text)
             if audio is None:
-                raise RuntimeError("Conversation audio must be prepared before dialing")
-            if self.closed:
-                return
+                if not dialogue.approved_mode(self.context["plan"]):
+                    raise RuntimeError("Unapproved dynamic dialogue")
+                self.event("status", "responding", reason="synthesizing")
+                try:
+                    async with asyncio.timeout(8):
+                        audio = telephone_audio(await response_wave(self.context, text))
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    if not self.current(generation):
+                        return False
+                    # Reuse the prepared current line; do not repeatedly submit TTS work.
+                    self.event("status", "responding", reason="synthesis_fallback")
+                    text = self.context["lines"][
+                        min(self.index, len(self.context["lines"]) - 1)
+                    ]
+                    audio = self.context["audio_by_text"][text]
+            if not self.current(generation):
+                return False
+            start = round((time.monotonic() - self.started_at) * 1000)
             self.playing = True
             self.event("playback_started", "playing")
             for offset in range(0, len(audio), 160):
+                if not self.current(generation):
+                    return False
                 await self.call.send_audio(audio[offset : offset + 160])
                 if not sent:
                     sent = True
@@ -438,6 +405,10 @@ class ScenarioSession:
                         self.call.call_id, source, "caller", text, False, start, None
                     )
                 await asyncio.sleep(0.02)
+            if not self.current(generation):
+                return False
+            self.history.append({"role": "assistant", "text": text})
+            self.history = self.history[-16:]
             if index is not None:
                 self.index = max(self.index, index + 1)
             conversations.segment(
@@ -453,7 +424,7 @@ class ScenarioSession:
             self.last_audio = time.monotonic()
             if (
                 index is not None
-                and "문자" in text
+                and "문자" in self.context["lines"][index]
                 and self.context.get("message_body")
             ):
                 training_messages.schedule(
@@ -467,6 +438,10 @@ class ScenarioSession:
         except asyncio.CancelledError:
             # The text is the intended script; an explicit event marks the interrupted delivery.
             if sent:
+                self.history.append(
+                    {"role": "assistant", "text": text, "interrupted": True}
+                )
+                self.history = self.history[-16:]
                 conversations.segment(
                     self.call.call_id,
                     source,
@@ -486,7 +461,8 @@ class ScenarioSession:
             await self.call.hangup()
             return False
         finally:
-            self.playing = False
+            if self.reply_source == source:
+                self.playing = False
 
     async def feed_dtmf(self, digits):
         if digits and self.call:
@@ -535,11 +511,12 @@ class ScenarioSession:
         if self.closed:
             return
         self.closed = True
+        self.generation += 1
         if self.call:
             self.event("status", "ended")
         tasks = [
             t
-            for t in (self.reply, self.worker, self.watch)
+            for t in (self.reply, self.worker, self.watch, *self.pending)
             if t and t is not asyncio.current_task()
         ]
         for task in tasks:
@@ -547,7 +524,12 @@ class ScenarioSession:
         await asyncio.gather(*tasks, return_exceptions=True)
 
     def get_telemetry(self):
-        return {"mode": "scenario", "stt": "faster-whisper-base-ko"}
+        return {
+            "mode": "hybrid"
+            if dialogue.approved_mode(self.context["plan"])
+            else "scenario",
+            "stt": "faster-whisper-base-ko",
+        }
 
 
 class ConversationService:
@@ -561,6 +543,11 @@ class ConversationService:
         import main
 
         sid, token, sender, _ = main.calling_settings()
+        if dialogue.approved_mode(plan) and not dialogue.runtime_matches(plan):
+            raise HTTPException(
+                409,
+                "응답 AI 설정이 변경되었습니다. 시나리오를 다시 선택하고 신청인의 최종 확정을 받아 주세요.",
+            )
         try:
             await asyncio.to_thread(load_stt)
         except Exception:

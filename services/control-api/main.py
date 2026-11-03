@@ -4,8 +4,8 @@ import io
 import json
 import logging
 import os
-import sys
 import re
+import sys
 import tempfile
 import time
 import uuid
@@ -26,13 +26,17 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StringConstraints
 
 import applications
+import dialogue
 
 MAX_FILE = 20 * 1024 * 1024
 MAX_BODY = MAX_FILE + 64 * 1024
 Engine = Literal["elevenlabs", "cosyvoice", "qwen"]
 LOCAL_MODELS = {"cosyvoice": ("CosyVoice 3", 18081), "qwen": ("Qwen3-TTS", 18082)}
-FRONTEND_DIST = (Path(__file__).parent / "frontend/dist" if getattr(sys, "frozen", False)
-                 else Path(__file__).parents[2] / "apps/operator/dist")
+FRONTEND_DIST = (
+    Path(__file__).parent / "frontend/dist"
+    if getattr(sys, "frozen", False)
+    else Path(__file__).parents[2] / "apps/operator/dist"
+)
 SCENARIOS_DIR = Path(
     os.getenv("TRAINING_SCENARIOS_DIR", Path(__file__).parent / "scenarios")
 )
@@ -145,7 +149,7 @@ app.include_router(applications.router)
 
 @app.get("/api/health")
 def health():
-    return {"service": "phishing-rehearsal", "protocol": 1}
+    return {"service": "phishing-rehearsal", "protocol": 2}
 
 
 def load_scenarios():
@@ -211,7 +215,9 @@ def scenario_catalog():
     )
 
 
-def build_plan(scenario_id, name, engine="qwen", selection="applicant"):
+def build_plan(
+    scenario_id, name, engine="qwen", selection="applicant", response_mode="scenario"
+):
     scenario = next(
         (item for item in load_scenarios() if item["id"] == scenario_id), None
     )
@@ -229,6 +235,11 @@ def build_plan(scenario_id, name, engine="qwen", selection="applicant"):
         raise HTTPException(422, "선택한 모델의 대본 길이 제한을 초과했습니다.")
     return {
         "selection": selection,
+        **(dialogue.binding() if response_mode == "hybrid" else {}),
+        "response_mode": response_mode,
+        "response_policy": dialogue.POLICY["version"]
+        if response_mode == "hybrid"
+        else None,
         "scenario_id": scenario_id,
         "scenario_title": scenario["title"],
         "text": text,
@@ -450,6 +461,7 @@ async def config():
     return {
         "configured": configured,
         "calling_configured": await calling_configured(),
+        "dialogue_configured": dialogue.configured(),
         "providers": [
             {
                 "id": "elevenlabs",
@@ -1154,6 +1166,7 @@ async def application_speech(application_id: str, body: ApplicationSpeech):
 class TrainingPlan(BaseModel):
     scenario_id: str = Field(min_length=1, max_length=250)
     engine: Engine = "qwen"
+    response_mode: Literal["scenario", "hybrid"] = "scenario"
 
 
 @app.post(
@@ -1162,6 +1175,10 @@ class TrainingPlan(BaseModel):
 )
 async def select_training_plan(application_id: str, body: TrainingPlan):
     applications.require_mutable(application_id)
+    if body.response_mode == "hybrid" and not dialogue.configured():
+        raise HTTPException(
+            409, "대화형 훈련에는 OPENAI_API_KEY와 VOICE_LLM_MODEL 설정이 필요합니다."
+        )
     application = applications.get(application_id)
     old = applications.get_plan(application_id)
     plan = build_plan(
@@ -1169,8 +1186,16 @@ async def select_training_plan(application_id: str, body: TrainingPlan):
         application["applicant_name"],
         body.engine,
         old.get("selection", "operator"),
+        body.response_mode,
     )
-    if all(old.get(key) == plan[key] for key in ("scenario_id", "text", "engine")):
+    same_script = all(
+        old.get(key) == plan[key] for key in ("scenario_id", "text", "engine")
+    )
+    same_mode = old.get("response_mode", "scenario") == plan["response_mode"]
+    same_policy = old.get("response_policy") == plan["response_policy"] and all(
+        old.get(key) == plan.get(key) for key in ("dialogue_model", "dialogue_endpoint")
+    )
+    if same_script and same_mode and same_policy:
         return applications.public_plan(old)
     applications.save_plan(application_id, plan)
     if old.get("version"):

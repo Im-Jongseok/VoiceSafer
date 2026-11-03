@@ -5,6 +5,7 @@ import re
 import time
 
 import applications
+from dialogue import assess
 
 SIGNALS = (
     ("urgency", "서두르게 하는 표현", r"급해|급하|빨리|얼른|당장"),
@@ -84,59 +85,21 @@ def analyze(segments, events, messages, call_status=None):
             context = " ".join(recent_prompts[-3:])
             continue
         responses += 1
-        refused = bool(
-            re.search(
-                r"(?:안|못)(?:보내|송금|입금|결제|설치|알려)|(?:보내|송금|입금|결제|설치|알려).*(?:안할|못해|하지않)|거절|그만|종료|끊을게",
-                text,
-            )
-        )
-        negated = bool(
-            re.search(r"안할|못할|안해|못해|하지않|안걸|못걸|할수없|못하", text)
-        )
-        independent = (
-            bool(
-                re.search(
-                    r"(?:원래|기존|저장된|알고있는)(?:번호|연락처|전화|메신저).*(?:확인|연락|전화|걸)|가족에게.*(?:확인|연락)",
-                    text,
-                )
-            )
-            and not negated
-        )
-        if refused:
-            add(row, "refusal", "요청 거절·통화 종료 의사", "safe_response")
-        if independent:
-            add(row, "independent_check", "기존 연락처로 확인할 의사", "safe_response")
-        if refused or independent and re.search(r"확인(?:하고|한뒤|후|한다음)", text):
-            continue
-        if (
-            not negated
-            and re.search(
-                r"(?:송금|입금|결제)(?:해줄|해드릴|할게|하겠|할께)|돈.*보내줄|보내줄게|보내줄께",
-                text,
-            )
-            and re.search(
-                r"돈|비용|결제|송금|입금|수리비|진료비|교통비|숙소", context + text
-            )
-        ):
-            add(row, "money_accept", "금전·결제 요청을 수락하는 표현", "response_risk")
-        if not negated and (
-            re.search(
-                r"(?:카드번호|인증번호|비밀번호|계좌번호|주민번호).*(?:[0-9]{4,}|알려줄|말해줄|보내줄)",
-                text,
-            )
-            or re.search(r"[0-9]{6,}", text)
-            and re.search(r"카드번호|인증번호|비밀번호|주민번호", context)
-        ):
+        result = assess(row["text"], context)
+        titles = {
+            "money_accept": "금전·결제 요청을 수락하는 표현",
+            "info_share": "민감정보를 전달하는 것으로 보이는 표현",
+            "app_accept": "앱 설치·권한 허용 의사",
+            "refusal": "요청 거절·통화 종료 의사",
+            "independent_check": "기존 연락처로 확인할 의사",
+        }
+        if result.code:
             add(
                 row,
-                "info_share",
-                "민감정보를 전달하는 것으로 보이는 표현",
-                "response_risk",
+                result.code,
+                titles[result.code],
+                "response_risk" if result.intent == "risk" else "safe_response",
             )
-        if not negated and re.search(
-            r"(?:설치|화면공유|원격).*(?:할게|해줄|하겠|허용)", text
-        ):
-            add(row, "app_accept", "앱 설치·권한 허용 의사", "response_risk")
 
     risks = [f for f in findings if f["kind"] == "response_risk"]
     safe = [f for f in findings if f["kind"] == "safe_response"]
@@ -159,7 +122,7 @@ def analyze(segments, events, messages, call_status=None):
         "no_clear_response": "확정된 답변에서 뚜렷한 수락·거절·별도 확인 의사를 찾지 못했습니다. 안전하다는 판정은 아닙니다.",
     }[assessment]
     return {
-        "method": "rules-v1",
+        "method": "rules-v2",
         "assessment": assessment,
         "summary": summary,
         "call_status": call_status,

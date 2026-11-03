@@ -28,7 +28,7 @@ async function serverReady() {
     if (
       !response.ok ||
       data.service !== "phishing-rehearsal" ||
-      data.protocol !== 1
+      data.protocol !== 2
     )
       throw new Error("PORT_CONFLICT");
     return true;
