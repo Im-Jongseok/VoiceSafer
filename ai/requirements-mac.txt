@@ -1,0 +1,6 @@
+-r requirements.txt
+mlx-audio==0.6.4
+mlx==0.32.4
+transformers==5.22.1
+huggingface-hub==2.4.0
+python-dotenv==1.2.4

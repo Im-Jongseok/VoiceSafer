@@ -1,0 +1,20 @@
+# Use WITH compose.yml: docker compose -f compose.yml -f compose.cpu.yml up -d --build
+services:
+  cosyvoice:
+    devices: !reset []
+    build:
+      dockerfile: docker/cosy.cpu.Dockerfile
+    environment:
+      INFERENCE_DEVICE: cpu
+      OPENBLAS_NUM_THREADS: 4
+      MKL_NUM_THREADS: 4
+  qwen:
+    devices: !reset []
+    build:
+      dockerfile: docker/qwen.cpu.Dockerfile
+    environment:
+      INFERENCE_DEVICE: cpu
+      QWEN_DTYPE: ${QWEN_CPU_DTYPE:-float32}
+      QWEN_DECODE_CHUNK_SIZE: ${QWEN_CPU_DECODE_CHUNK_SIZE:-48}
+      OPENBLAS_NUM_THREADS: 4
+      MKL_NUM_THREADS: 4
