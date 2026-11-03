@@ -1,63 +1,100 @@
-# VoiceVaccine
+<div align="center">
+  <img src="assets/voicesafer-logo.svg" alt="VoiceSafer" width="340" />
+  <p><strong>익숙한 목소리에도, 끊고 확인하는 연습.</strong></p>
+  <p>동의한 가족의 목소리로 진행하는 보이스피싱 예방 모의훈련 서비스</p>
+  <p>
+    <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white" alt="React 19" />
+    <img src="https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white" alt="Tailwind CSS 4" />
+    <img src="https://img.shields.io/badge/Electron-45-47848F?logo=electron&logoColor=white" alt="Electron 45" />
+    <img src="https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI" />
+    <img src="https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white" alt="Python 3.12" />
+    <img src="https://img.shields.io/badge/Supabase-3FCF8E?logo=supabase&logoColor=white" alt="Supabase" />
+    <img src="https://img.shields.io/badge/Qwen3--TTS-MLX-2353FF" alt="Qwen3-TTS MLX" />
+    <img src="https://img.shields.io/badge/STT-faster--whisper-555555" alt="faster-whisper" />
+    <img src="https://img.shields.io/badge/Vercel-000000?logo=vercel&logoColor=white" alt="Vercel" />
+  </p>
+  <a href="https://voice-vaccine.vercel.app/">서비스 웹</a>
+</div>
 
-보이스피싱 예방 모의훈련 서비스입니다. React·Tailwind CSS 웹에서 Supabase Auth·DB·Storage·Realtime에 직접 연결하며, 별도 API 서버는 사용하지 않습니다.
+## 서비스 흐름
 
-## 실행
+**신청·동의 → 시나리오 선택 → 목소리 등록 → 예상 음성 확인·최종 확정 → 훈련 전화·문자 → 대응 리포트**
 
-Node.js 22.12 이상을 사용합니다.
+- **웹:** 서비스 소개, 신청, 본인 내역 조회·취소, 예상 음성 확인과 최종 확정, 종료 후 리포트.
+- **관제:** 신청·통화 상태와 대화 기록 확인. PC 앱에서 음성 준비, ClawOps 전화·문자 연결과 훈련 운영.
+- **AI:** Apple Silicon의 MLX Qwen3-TTS로 목소리 복제·합성. PC 관제의 faster-whisper가 수신자 음성을 인식하며 시나리오 안에서 응답.
+
+핵심 피드백은 **“애매하면 전화를 끊고, 평소 저장해 둔 가족 번호로 직접 확인하세요.”** 입니다.
+
+## 폴더 구조
+
+```text
+web/                    공개 웹 · Vercel 빌드 진입점
+  src/                  홈 · 신청 · 조회 · 음성 확인 · 리포트
+control/                운영자 관제
+  web/                  공개 웹 /control에서 로드하는 DB 기반 관제 화면
+  frontend/             PC 관제 전용 React 화면
+  desktop/              Electron 실행 · 앱 패키징
+  *.py                  로컬 API · 신청 연동 · 통화 · 문자 · 리포트
+  가족사칭_시나리오/     훈련 대본
+  tests/                관제 API 검증
+ai/                     독립 음성 모델 서버
+  app/                  Qwen · CosyVoice · ElevenLabs 어댑터
+  scripts/              Mac MLX 실행 · Docker 실행
+  docker/               모델별 컨테이너 빌드
+  tests/                음성 API 검증
+assets/                 웹 · PC 관제 · README 공용 로고
+supabase/               공용 DB 마이그레이션 · TLS 인증서
+ai.sh                   AI 서버 시작 · 중지 · 상태 확인
+```
+
+`web/`은 `control/web/`의 브라우저 관제를 지연 로드합니다. Electron·Python·모델 코드는 웹 번들에 포함하지 않습니다. DB 클라이언트와 공용 화면 요소는 `web/src/`에서 사용합니다.
+
+## 웹 실행
+
+Node.js 22.12 이상을 사용합니다. `web/.env.example`을 `web/.env.local`로 복사하고 Supabase 프로젝트의 **publishable key**와 URL을 설정합니다.
 
 ```sh
+npm ci --prefix web
+npm run dev --prefix web
+npm run build --prefix web
+```
+
+신청 조회는 신청 당시 브라우저의 익명 인증과 신청자 전화번호를 사용합니다. 운영자 관제는 비밀번호 입력 후 권한이 등록된 내부 Auth 계정으로 접속합니다. 전화 API 키와 DB secret/service-role 키는 브라우저에 넣지 않습니다.
+
+## PC 관제 실행
+
+Python 3.12, uv, Node.js를 사용합니다. 설정은 기존 프로필 `~/Library/Application Support/Phishing Rehearsal/.env`에 보관하며, 입력할 키 목록은 [control/.env.example](control/.env.example)을 참고합니다. 앱 이름을 바꿔도 기존 설정·신청 기록을 사용하도록 프로필 경로는 유지합니다.
+
+```sh
+cd control
+uv sync --locked
 npm ci --prefix frontend
-npm run dev --prefix frontend
+npm ci --prefix desktop
 npm run build --prefix frontend
+npm start --prefix desktop
 ```
 
-`frontend/.env.local`에 `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`를 설정합니다. DB 비밀번호와 secret/service role 키는 브라우저 환경 변수에 넣지 않습니다.
+앱 패키징은 `control/`에서 `npm run build --prefix desktop`으로 실행하며 결과는 `control/dist/desktop/`에 생성됩니다. 공개 브라우저 관제는 조회·관리 화면이며 실제 발신은 PC 앱에서 수행합니다.
 
-## 신청과 관제
+## 로컬 AI 실행
 
-- `/apply`: 신청 정보·희망 일정·필수 동의 → 시나리오 선택 → 목소리 등록 → 접수. 예시 신청도 DB에 저장하고 관제에 별도로 표시합니다.
-- 마이크 녹음과 파일 선택을 지원합니다. 3~60초 음성을 모노 24kHz PCM WAV로 변환해 비공개 저장소에 업로드합니다. 목소리 없이 접수할 수도 있습니다.
-- `/lookup`: 신청한 브라우저의 익명 인증과 신청자 전화번호로 본인 내역을 조회합니다. 같은 번호의 신청이 여러 건이면 목록에서 선택합니다. 새로고침 후에도 유지되지만 브라우저 인증 정보를 지우거나 다른 기기를 사용하면 조회할 수 없습니다. 전화번호만으로는 다른 사람의 정보를 읽을 수 없습니다. 발신 전 신청은 확인 후 취소할 수 있으며, 진행 중인 통화가 있으면 DB에서 취소를 거부합니다. 취소된 신청의 후속 통화 생성·진행도 차단합니다.
-- `/control`: 운영자 비밀번호로 로그인하여 신청·등록 목소리·통화별 대화 기록을 확인합니다. 이메일 입력 없이 고정된 내부 Auth 계정을 사용하며, DB 관리자가 `app_private.operators`에 등록한 사용자만 접근합니다. 운영자 비밀번호는 프런트 코드에 포함하지 않습니다.
-- 신청·진행 상태·대화 기록은 비공개 Realtime 채널로 갱신합니다. 대화는 중간/확정 문장을 구분하고 순서·수정 버전을 유지합니다. 재연결 시 최신 기록을 다시 조회하며 긴 대화는 50개씩 이전 기록을 불러옵니다. 신청 목록은 최근 100건, 통화 목록은 최근 20건을 표시합니다.
-
-**공개 웹은 접수·조회·관제를 제공하며 전화 발신은 PC 앱에서 진행합니다.** PC 관제에서 준비한 음성을 비공개 Storage에 게시하면 신청인 조회에서 재생하고 해당 버전·파일을 최종 확정합니다. 시나리오나 음성이 바뀌면 확정은 초기화됩니다. `reserve_training_call`은 최신 확정·대상자 번호·동의·진행 상태를 잠금으로 검사해 발신을 예약하며, `update_training_call_status`는 ClawOps 응답에 따라 통화·신청 상태를 함께 갱신합니다. 공개 웹에 전화 API 키를 전달하지 않습니다. 결제는 연결하지 않았으며 접수나 최종 확정만으로 전화가 발신되거나 일정이 확정되지 않습니다.
-
-PC 앱의 양방향 통화에서 수신한 음성 인식 결과·재생 대본·중단/응답 상태는 Supabase로 전달됩니다. `record_training_segment`는 같은 발화의 중간·확정 결과를 버전별로 저장하며, 중복 재전송과 오래된 결과가 확정 문장을 덮어쓰지 못하게 합니다. 공개 관제는 비공개 Realtime 알림으로 문장과 듣기·인식·응답 준비·재생 상태를 다시 조회합니다. 발신자 재생 대본은 실제로 모두 들었다는 증거와 구분하며, 수신자 중간 문장은 변경될 수 있습니다. 실제 전화망의 양방향 음성 품질·지연은 현장 검증 대상입니다.
-
-## DB
-
-Supabase Free 프로젝트 `voice-vaccine`을 서울 리전에 사용합니다. 신청을 위해 Auth의 **Allow anonymous sign-ins**가 활성화되어 있어야 합니다.
-
-| 테이블                  | 저장 내용                                   |
-| ----------------------- | ------------------------------------------- |
-| `scenarios`             | 시나리오 목록                               |
-| `applications`          | 신청인·대상자·희망 일정·진행 상태           |
-| `application_consents`  | 필수 동의와 문구 버전·동의 시각             |
-| `voice_assets`          | 비공개 음성 파일 경로·길이·상태             |
-| `training_calls`        | 통화별 시나리오·모델·승인·통화 상태         |
-| `conversation_segments` | 발신자/수신자 문장·순서·수정 버전·확정 여부 |
-| `call_events`           | 발화·재생·끼어들기·통화 이벤트              |
-
-모든 공개 테이블에 RLS를 적용합니다. 방문자는 활성 시나리오만, 신청인은 본인 신청과 음성만, 운영자는 관제 데이터를 읽습니다. `create_application`이 신청·동의를 원자적으로 생성하고 요청 ID로 재시도 중복을 방지합니다. 업로드가 끝난 뒤 `finish_application`이 접수를 완료하며, 완료된 신청만 관제 목록에 표시합니다. 원본 음성은 품질 검증 전인 `pending`으로 저장합니다.
-
-`SECURITY DEFINER` 구현은 비공개 `app_private` 스키마에 두고 인증·소유권을 검사하며, 공개 RPC는 `SECURITY INVOKER`로 위임합니다. 연락처는 국제 형식, 시각은 `timestamptz`, 희망 날짜는 한국 시간 기준으로 저장합니다.
-
-`voice-references`(최대 3MiB)와 `training-audio`(최대 20MiB)는 비공개 버킷입니다. 재생 시 권한 검사 후 5분 유효 서명 URL을 발급합니다. Realtime 알림에는 식별자만 담고 실제 내용은 RLS가 적용된 테이블에서 조회합니다.
-
-### 마이그레이션
-
-`frontend`가 Vercel `im-jongseok/voice-vaccine`에 연결된 상태에서 실행합니다.
+Apple Silicon Mac에서는 Qwen3-TTS 0.6B Base 4bit를 Metal로 실행합니다. 최초 실행에는 모델 다운로드가 필요합니다. 키 설정과 실행 조건은 [AI 안내](ai/README.md)를 참고하세요.
 
 ```sh
-cd frontend
-npx vercel env pull .env.local --yes --scope im-jongseok
-npm run db:migrate
+bash ai.sh up
+bash ai.sh status
+bash ai.sh stop
 ```
 
-`POSTGRES_URL_NON_POOLING`과 Supabase CA 인증서로 TLS 연결을 검증합니다. 적용된 SQL 체크섬을 기록하므로 기존 마이그레이션은 수정하지 않고 새 파일을 추가합니다. 최초 프로젝트에서는 Realtime 클라이언트가 한 번 연결되어 `realtime.messages`가 초기화되어 있어야 합니다.
+PC 설정의 `QWEN_URL`은 `http://127.0.0.1:18082`, `LOCAL_TTS_API_KEY`는 AI 서버와 동일한 키로 설정합니다. `MAC_AI_RUNNER`에 이 레포의 `ai/scripts/macos.py` 절대 경로를 지정하면 PC 앱이 AI 서버를 시작합니다. 전화·문자에는 별도의 ClawOps 계정과 네트워크 연결이 필요합니다.
 
-## 배포
+## DB · 배포
 
-Vercel 프로젝트 경로는 `frontend`, 빌드 명령은 `npm run build`, 출력 경로는 `dist`입니다. `vercel.json`이 신청·조회·관제 경로의 직접 접속과 새로고침을 지원합니다. 홈페이지와 신청/관제 코드는 분할해서 로드합니다.
+- 공용 Supabase 정의는 `supabase/migrations/`에 둡니다. 기존 SQL·체크섬은 유지하며 이번 구조 변경에서 DB 마이그레이션을 실행하지 않습니다.
+- RLS로 신청자 본인 내역과 운영자 접근을 구분합니다. 참조·훈련 음성은 비공개 Storage, 변경 알림은 비공개 Realtime 채널을 사용합니다.
+- 시나리오·예상 음성이 바뀌면 최종 확정을 다시 받습니다. 발신 직전 최신 확정·취소·대상자 번호·중복 통화를 검사합니다.
+- Vercel **Root Directory는 `web`**, Build Command는 `npm run build`, Output Directory는 `dist`입니다. 공용 로고와 브라우저 관제를 읽도록 **Include source files outside of the Root Directory**를 활성화합니다. 기존 프로젝트 URL과 DB 프로젝트 이름은 유지합니다.
+- DB 변경이 필요한 경우에만 `web/`에 필요한 비공개 환경 변수를 준비하고 `npm run db:migrate --prefix web`을 실행합니다.
+
+음성 생성 성공, 전화 연결, 실제 재생·문자 도착, 교육 효과는 각각 구분해 검증합니다. 통화 문장에는 재생 대본과 STT 결과가 포함되며, 원문만으로 사용자가 음성을 모두 들었다고 판단하지 않습니다.
